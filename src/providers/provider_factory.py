@@ -10,6 +10,7 @@ from typing import Optional
 from src.config import LLMProvider, settings
 from src.providers.anthropic_provider import AnthropicProvider
 from src.providers.base_provider import BaseLLMProvider
+from src.providers.gemini_provider import GeminiProvider
 from src.providers.openai_provider import OpenAIProvider
 
 
@@ -58,6 +59,13 @@ class ProviderFactory:
             )
         elif provider == LLMProvider.ANTHROPIC:
             return AnthropicProvider(
+                api_key=api_key,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        elif provider == LLMProvider.GEMINI:
+            return GeminiProvider(
                 api_key=api_key,
                 model=model,
                 temperature=temperature,

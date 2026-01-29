@@ -6,6 +6,7 @@ and comparing results across different LLM providers.
 """
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -14,11 +15,15 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from src.config import LLMProvider, settings
+from src.config import LLMProvider, settings, setup_logging
 from src.orchestration.debate_manager import DebateManager
 from src.output.evaluator import Evaluator
 from src.output.report import ReportGenerator
 from src.providers.provider_factory import ProviderFactory
+
+# Setup logging
+setup_logging(settings.log_level)
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(
     name="sca",
@@ -88,6 +93,10 @@ def analyze(
         console.print(f"[red]Configuration Error:[/red] {e}")
         raise typer.Exit(code=1)
 
+    logger.info(f"Starting analysis of contract: {contract_path}")
+    logger.info(f"Provider: {provider.value}, Rounds: {rounds}")
+    logger.debug(f"Verbose mode: {verbose}")
+    
     console.print(f"[cyan]Analyzing:[/cyan] {contract_path}")
     console.print(f"[cyan]Provider:[/cyan] {provider.value}")
     console.print(f"[cyan]Debate Rounds:[/cyan] {rounds}")
@@ -124,10 +133,13 @@ async def _run_analysis(
     status: "rich.status.Status",
 ) -> dict:
     """Run the adversarial analysis asynchronously."""
+    logger.debug(f"Creating LLM provider: {provider.value}")
     # Create provider
     llm_provider = ProviderFactory.create(provider)
+    logger.debug(f"Provider created: {llm_provider.provider_name}")
 
     # Create debate manager
+    logger.debug(f"Initializing DebateManager with {rounds} rounds")
     debate_manager = DebateManager(
         provider=llm_provider,
         max_rounds=rounds,
@@ -136,7 +148,9 @@ async def _run_analysis(
 
     # Run debate
     status.update("[bold green]Attacker scanning for vulnerabilities...")
+    logger.info("Starting adversarial debate...")
     result = await debate_manager.run_debate(contract_code, contract_path)
+    logger.info(f"Debate complete - {len(result.get('vulnerabilities', []))} vulnerabilities found")
 
     return result
 
@@ -229,14 +243,14 @@ def compare(
     """
     Compare vulnerability detection results across different LLM providers.
 
-    Runs the same analysis using both OpenAI and Anthropic, then
+    Runs the same analysis using OpenAI, Anthropic, and Gemini, then
     presents a side-by-side comparison of the findings.
     """
     print_banner()
 
-    # Validate both providers
+    # Validate all providers
     providers_to_test = []
-    for provider in [LLMProvider.OPENAI, LLMProvider.ANTHROPIC]:
+    for provider in [LLMProvider.OPENAI, LLMProvider.ANTHROPIC, LLMProvider.GEMINI]:
         try:
             settings.validate_provider_config(provider)
             providers_to_test.append(provider)
@@ -304,6 +318,7 @@ def info() -> None:
     table.add_row("Default Provider", settings.default_provider.value)
     table.add_row("OpenAI Model", settings.default_model_openai)
     table.add_row("Anthropic Model", settings.default_model_anthropic)
+    table.add_row("Gemini Model", settings.default_model_gemini)
     table.add_row("Debate Rounds", str(settings.default_debate_rounds))
     table.add_row("Temperature", str(settings.default_temperature))
     table.add_row("Log Level", settings.log_level)
@@ -311,8 +326,10 @@ def info() -> None:
     # API Key status
     openai_status = "✓ Configured" if settings.openai_api_key else "✗ Not Set"
     anthropic_status = "✓ Configured" if settings.anthropic_api_key else "✗ Not Set"
+    gemini_status = "✓ Configured" if settings.gemini_api_key else "✗ Not Set"
     table.add_row("OpenAI API Key", openai_status)
     table.add_row("Anthropic API Key", anthropic_status)
+    table.add_row("Gemini API Key", gemini_status)
 
     console.print(table)
 

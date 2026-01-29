@@ -5,6 +5,7 @@ Coordinates the Attacker, Defender, and Judge agents through
 structured debate rounds to analyze smart contracts.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
@@ -18,6 +19,8 @@ from src.agents.judge_agent import JudgeAgent, Verdict
 from src.orchestration.conversation import Conversation, TurnType
 from src.parsers.language_detector import LanguageDetector
 from src.providers.base_provider import BaseLLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -139,13 +142,19 @@ class DebateManager:
         self.verbose = verbose
         self.console = console or Console()
 
+        logger.debug(f"Initializing DebateManager with provider={provider.provider_name}, max_rounds={max_rounds}")
+        
         # Initialize agents
+        logger.debug("Creating Attacker Agent")
         self.attacker = AttackerAgent(provider)
+        logger.debug("Creating Defender Agent")
         self.defender = DefenderAgent(provider)
+        logger.debug("Creating Judge Agent")
         self.judge = JudgeAgent(provider)
 
         # Language detector
         self.language_detector = LanguageDetector()
+        logger.debug("DebateManager initialization complete")
 
     async def run_debate(
         self,
@@ -163,23 +172,29 @@ class DebateManager:
             Dictionary containing the complete analysis results
         """
         # Initialize result tracking
+        detected_language = self.language_detector.detect(contract_code, contract_path)
+        logger.info(f"Detected contract language: {detected_language}")
+        
         result = DebateResult(
             contract_path=contract_path,
-            contract_language=self.language_detector.detect(contract_code, contract_path),
+            contract_language=detected_language,
             started_at=datetime.now(),
         )
         conversation = Conversation(contract_path)
         result.conversation = conversation
 
         # Phase 1: Attacker scans for vulnerabilities
+        logger.info("Phase 1: Attacker Agent scanning for vulnerabilities")
         if self.verbose:
             self.console.print("[bold blue]Phase 1:[/bold blue] Attacker scanning...")
 
+        logger.debug(f"Sending contract to Attacker Agent (length: {len(contract_code)} chars)")
         attacker_response = await self.attacker.analyze({
             "contract_code": contract_code,
             "contract_path": contract_path,
             "language": result.contract_language,
         })
+        logger.debug(f"Attacker response received: {attacker_response.tokens_used} tokens")
 
         conversation.add_turn(
             TurnType.ATTACK,
@@ -188,6 +203,7 @@ class DebateManager:
         )
 
         result.initial_claims = attacker_response.claims
+        logger.info(f"Attacker Agent found {len(result.initial_claims)} potential vulnerabilities")
 
         if self.verbose:
             self.console.print(
@@ -195,7 +211,9 @@ class DebateManager:
             )
 
         # Phase 2-4: Debate each claim
+        logger.info(f"Phase 2-4: Starting debate rounds for {len(result.initial_claims)} claims")
         for i, claim in enumerate(result.initial_claims):
+            logger.info(f"Debating claim {i+1}/{len(result.initial_claims)}: {claim.vulnerability_type}")
             if self.verbose:
                 self.console.print(
                     f"\n[bold blue]Debating claim {i+1}/{len(result.initial_claims)}:[/bold blue] "

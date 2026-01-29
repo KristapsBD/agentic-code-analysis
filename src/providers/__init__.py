@@ -2,7 +2,7 @@
 LLM Provider abstraction layer.
 
 Provides a unified interface for interacting with different LLM providers
-(OpenAI, Anthropic) with easy provider switching.
+(OpenAI, Anthropic, Gemini) with easy provider switching.
 """
 
 from src.providers.base_provider import BaseLLMProvider, LLMResponse

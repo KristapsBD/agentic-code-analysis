@@ -41,7 +41,25 @@ Edit `.env` with your API keys:
 ```
 OPENAI_API_KEY=sk-your-openai-api-key
 ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key
+GEMINI_API_KEY=your-gemini-api-key
 ```
+
+### Provider Pricing & Free Tiers
+
+For **testing and development**, we recommend using **Google Gemini**:
+
+| Provider | Free/Cheap Option | Best For |
+|----------|------------------|----------|
+| **Google Gemini** | **Gemini 1.5 Flash (FREE tier)** ✓ | **Testing & refactoring** |
+| **OpenAI** | GPT-4o mini (paid, ~$0.15/1M tokens) | Production, best reasoning |
+| **Anthropic Claude** | Claude 3.5 Haiku (paid, ~$0.25/1M tokens) | Consistency, enterprise |
+
+**Recommendation for thesis development:**
+- Use **Gemini 1.5 Flash** (free tier) for rapid prototyping and testing
+- Switch to **GPT-4o** for final evaluation runs (better vulnerability detection quality)
+- Keep **Anthropic Claude** for comparative analysis
+
+Get your Gemini API key (free): https://makersuite.google.com/app/apikey
 
 ## Usage
 
@@ -53,6 +71,9 @@ python -m src.main analyze contract.sol
 
 # Using Anthropic
 python -m src.main analyze contract.sol --provider anthropic
+
+# Using Gemini (FREE tier - recommended for testing)
+python -m src.main analyze contract.sol --provider gemini
 
 # With multiple debate rounds
 python -m src.main analyze contract.sol --rounds 3
@@ -68,7 +89,7 @@ python -m src.main evaluate ./data/benchmarks/smartbugs/ --output results.json
 ### Compare Providers
 
 ```bash
-# Compare results between OpenAI and Anthropic
+# Compare results across all providers (OpenAI, Anthropic, Gemini)
 python -m src.main compare contract.sol
 ```
 

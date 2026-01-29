@@ -4,6 +4,7 @@ Configuration management for the Adversarial Agent System.
 Handles environment variables, default settings, and configuration validation.
 """
 
+import logging
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -12,8 +13,25 @@ from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file (if it exists and is readable)
+try:
+    load_dotenv()
+except (PermissionError, FileNotFoundError):
+    pass  # .env file not accessible, will use environment variables or defaults
+
+
+def setup_logging(log_level: str = "INFO") -> None:
+    """
+    Configure logging for the application.
+    
+    Args:
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    """
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper(), logging.INFO),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
 
 
 class LLMProvider(str, Enum):
@@ -21,6 +39,7 @@ class LLMProvider(str, Enum):
 
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    GEMINI = "gemini"
 
 
 class Settings(BaseSettings):
@@ -29,6 +48,7 @@ class Settings(BaseSettings):
     # API Keys
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
+    gemini_api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
 
     # Default Provider Configuration
     default_provider: LLMProvider = Field(
@@ -39,6 +59,9 @@ class Settings(BaseSettings):
     )
     default_model_anthropic: str = Field(
         default="claude-3-5-sonnet-20241022", alias="DEFAULT_MODEL_ANTHROPIC"
+    )
+    default_model_gemini: str = Field(
+        default="gemini-2.0-flash-exp", alias="DEFAULT_MODEL_GEMINI"
     )
 
     # Debate Configuration
@@ -78,6 +101,8 @@ class Settings(BaseSettings):
             return self.default_model_openai
         elif provider == LLMProvider.ANTHROPIC:
             return self.default_model_anthropic
+        elif provider == LLMProvider.GEMINI:
+            return self.default_model_gemini
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -88,6 +113,8 @@ class Settings(BaseSettings):
             return self.openai_api_key
         elif provider == LLMProvider.ANTHROPIC:
             return self.anthropic_api_key
+        elif provider == LLMProvider.GEMINI:
+            return self.gemini_api_key
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
