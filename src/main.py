@@ -7,6 +7,7 @@ and comparing results across different LLM providers.
 
 import asyncio
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -118,10 +119,33 @@ def analyze(
     console.print()
     report_generator.print_to_console(report, console)
 
-    # Save report if output path specified
+    # Save reports (always save to data/results/)
+    results_dir = Path("data/results")
+    results_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate filename from contract name and timestamp
+    contract_name = contract_path.stem
+    timestamp = result.get("started_at", "").replace(":", "-").split(".")[0] if isinstance(result.get("started_at"), str) else datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    
+    json_path = results_dir / f"{contract_name}_{timestamp}.json"
+    md_path = results_dir / f"{contract_name}_{timestamp}.md"
+    
+    # Save JSON (full details)
+    report_generator.save_json(report, json_path)
+    logger.info(f"JSON report saved to: {json_path}")
+    
+    # Save Markdown (human-readable)
+    report_generator.save_markdown(report, md_path)
+    logger.info(f"Markdown report saved to: {md_path}")
+    
+    console.print(f"\n[green]✓ Reports saved:[/green]")
+    console.print(f"  JSON: {json_path}")
+    console.print(f"  Markdown: {md_path}")
+    
+    # Save to custom path if specified
     if output:
         report_generator.save_json(report, output)
-        console.print(f"\n[green]Report saved to:[/green] {output}")
+        console.print(f"  Custom: {output}")
 
 
 async def _run_analysis(
