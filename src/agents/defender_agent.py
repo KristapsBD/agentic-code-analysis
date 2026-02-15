@@ -5,9 +5,19 @@ The Defender Agent acts as a developer advocate, reviewing vulnerability
 claims and providing counter-arguments when claims are invalid or exaggerated.
 """
 
+import logging
+from typing import Any
+
 from src.agents.base_agent import AgentResponse, AgentRole, BaseAgent, VulnerabilityClaim
-from src.knowledge.prompts.defender import DEFENDER_SYSTEM_PROMPT, DEFENSE_PROMPT_TEMPLATE
+from src.knowledge.prompts.defender import (
+    CLARIFICATION_RESPONSE_PROMPT_TEMPLATE,
+    DEFENDER_SYSTEM_PROMPT,
+    DEFENSE_PROMPT_TEMPLATE,
+    REBUTTAL_RESPONSE_PROMPT_TEMPLATE,
+)
 from src.providers.base_provider import BaseLLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class DefenderAgent(BaseAgent):
@@ -67,20 +77,26 @@ class DefenderAgent(BaseAgent):
             attacker_confidence=claim_dict.get("confidence", 0.5),
         )
 
-        response = await self._send_message(prompt, include_history=False, temperature=0.3)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.3)
 
-        # Parse the defense response
-        defense_verdict, confidence = self._parse_defense(response)
+        # Extract structured defense data
+        defense_verdict = parsed.get("verdict", "unknown")
+        confidence = float(parsed.get("confidence", 0.5))
+        defense_text = parsed.get("defense", str(parsed))
 
         return AgentResponse(
             agent_role=self.role,
-            content=response,
+            content=defense_text,
             claims=[],
             reasoning=defense_verdict,
+            confidence=confidence,
             metadata={
                 "claim_id": claim_dict.get("id", "unknown"),
                 "defense_verdict": defense_verdict,
                 "defense_confidence": confidence,
+                "mitigations_found": parsed.get("mitigations_found", []),
+                "recommended_severity": parsed.get("recommended_severity", ""),
+                "evidence": parsed.get("evidence", ""),
                 "contract_path": contract_path,
             },
         )
@@ -102,91 +118,69 @@ class DefenderAgent(BaseAgent):
         original_defense = context.get("original_defense", "")
         rebuttal = context.get("rebuttal", "")
 
-        prompt = f"""The Attacker has provided a rebuttal to your defense.
+        prompt = REBUTTAL_RESPONSE_PROMPT_TEMPLATE.format(
+            vulnerability_type=claim.get("vulnerability_type", "Unknown"),
+            location=claim.get("location", "Unknown"),
+            description=claim.get("description", "No description"),
+            original_defense=original_defense,
+            rebuttal=rebuttal,
+        )
 
-VULNERABILITY CLAIM:
-- Type: {claim.get('vulnerability_type', 'Unknown')}
-- Location: {claim.get('location', 'Unknown')}
-- Description: {claim.get('description', 'No description')}
+        parsed = await self._send_message_json(prompt, include_history=True, temperature=0.3)
 
-YOUR ORIGINAL DEFENSE:
-{original_defense}
-
-ATTACKER'S REBUTTAL:
-{rebuttal}
-
-Analyze the rebuttal and respond:
-1. If the Attacker raises valid new evidence, ACKNOWLEDGE the vulnerability
-2. If your defense still holds, MAINTAIN your position with clarification
-
-Format your response as:
-VERDICT: [ACKNOWLEDGE_VULNERABILITY or MAINTAIN_DEFENSE]
-REASONING: [Your detailed analysis]
-FINAL_ASSESSMENT: [Your final opinion on the validity of this claim]
-CONFIDENCE: [0.0-1.0 that the code is SAFE]"""
-
-        response = await self._send_message(prompt, include_history=True, temperature=0.3)
-
-        # Determine verdict
-        acknowledges_vuln = "ACKNOWLEDGE" in response.upper()[:100]
+        # Determine verdict from structured output
+        verdict = parsed.get("verdict", "MAINTAIN_DEFENSE").upper()
+        acknowledges_vuln = "ACKNOWLEDGE" in verdict
+        confidence = float(parsed.get("confidence", 0.5))
 
         return AgentResponse(
             agent_role=self.role,
-            content=response,
+            content=parsed.get("reasoning", str(parsed)),
             claims=[],
             reasoning="Acknowledges vulnerability" if acknowledges_vuln else "Maintains defense",
+            confidence=confidence,
             metadata={
                 "claim_id": claim.get("id", "unknown"),
                 "acknowledges_vulnerability": acknowledges_vuln,
+                "final_assessment": parsed.get("final_assessment", ""),
             },
         )
 
-    def _parse_defense(self, response: str) -> tuple[str, float]:
+    async def respond_to_clarification(self, context: dict) -> AgentResponse:
         """
-        Parse the defense response to extract verdict and confidence.
+        Respond to a clarification request from the Judge.
 
         Args:
-            response: The raw LLM response
+            context: Dictionary containing:
+                - original_claim: The original vulnerability claim
+                - judge_question: The Judge's specific question
 
         Returns:
-            Tuple of (verdict string, confidence float)
+            AgentResponse with targeted answer to the Judge's question
         """
-        verdict = "unknown"
-        confidence = 0.5
+        claim = context.get("original_claim", {})
+        judge_question = context.get("judge_question", "")
 
-        response_upper = response.upper()
+        prompt = CLARIFICATION_RESPONSE_PROMPT_TEMPLATE.format(
+            vulnerability_type=claim.get("vulnerability_type", "Unknown"),
+            location=claim.get("location", "Unknown"),
+            description=claim.get("description", "No description"),
+            judge_question=judge_question,
+        )
 
-        # Determine verdict
-        if "INVALID" in response_upper or "NOT VULNERABLE" in response_upper:
-            verdict = "invalid_claim"
-        elif "VALID" in response_upper or "VULNERABLE" in response_upper:
-            verdict = "valid_vulnerability"
-        elif "PARTIAL" in response_upper or "MITIGATED" in response_upper:
-            verdict = "partially_mitigated"
-        elif "ACKNOWLEDGE" in response_upper:
-            verdict = "valid_vulnerability"
-        else:
-            verdict = "needs_review"
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
 
-        # Extract confidence
-        import re
+        confidence = float(parsed.get("confidence", 0.5))
 
-        conf_patterns = [
-            r"CONFIDENCE[:\s]*([0-9.]+)",
-            r"confidence[:\s]*([0-9.]+)",
-            r"([0-9]+)%\s*confident",
-        ]
-
-        for pattern in conf_patterns:
-            match = re.search(pattern, response)
-            if match:
-                try:
-                    conf = float(match.group(1))
-                    if conf > 1:
-                        conf = conf / 100
-                    confidence = max(0.0, min(1.0, conf))
-                    break
-                except ValueError:
-                    continue
-
-        return verdict, confidence
+        return AgentResponse(
+            agent_role=self.role,
+            content=parsed.get("answer", str(parsed)),
+            claims=[],
+            reasoning="Clarification response",
+            confidence=confidence,
+            metadata={
+                "claim_id": claim.get("id", "unknown"),
+                "supporting_evidence": parsed.get("supporting_evidence", ""),
+                "is_clarification": True,
+            },
+        )

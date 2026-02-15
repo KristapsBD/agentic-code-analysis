@@ -5,7 +5,7 @@ Tests for agent implementations.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.agents.base_agent import AgentRole, VulnerabilityClaim, AgentResponse
+from src.agents.base_agent import AgentRole, VulnerabilityClaim, AgentResponse, ClaimContext
 from src.agents.attacker_agent import AttackerAgent
 from src.agents.defender_agent import DefenderAgent
 from src.agents.judge_agent import JudgeAgent, Verdict
@@ -47,6 +47,50 @@ class TestVulnerabilityClaim:
         assert result["confidence"] == 0.8
 
 
+class TestClaimContext:
+    """Tests for ClaimContext."""
+
+    def test_claim_context_creation(self):
+        """Test creating a claim context."""
+        claim = VulnerabilityClaim(
+            id="test-1",
+            vulnerability_type="Reentrancy",
+            severity="high",
+            location="withdraw()",
+            description="Test",
+            evidence="Test",
+            confidence=0.9,
+        )
+        ctx = ClaimContext(
+            claim=claim,
+            contract_code="contract Test {}",
+            attacker_argument="The code is vulnerable",
+            defender_argument="The code is safe",
+        )
+        assert ctx.claim.id == "test-1"
+        assert ctx.attacker_argument == "The code is vulnerable"
+
+    def test_claim_context_to_dict(self):
+        """Test converting claim context to dict."""
+        claim = VulnerabilityClaim(
+            id="test-1",
+            vulnerability_type="Reentrancy",
+            severity="high",
+            location="withdraw()",
+            description="Test",
+            evidence="Test",
+            confidence=0.9,
+        )
+        ctx = ClaimContext(
+            claim=claim,
+            contract_code="contract Test {}",
+        )
+        result = ctx.to_dict()
+        assert "claim" in result
+        assert "contract_code" in result
+        assert result["attacker_confidence"] == 0.0
+
+
 class TestAgentResponse:
     """Tests for AgentResponse."""
 
@@ -80,6 +124,15 @@ class TestAgentResponse:
         assert len(response.claims) == 1
         assert response.claims[0].vulnerability_type == "Reentrancy"
 
+    def test_response_confidence_field(self):
+        """Test that confidence field exists on AgentResponse."""
+        response = AgentResponse(
+            agent_role=AgentRole.ATTACKER,
+            content="Test",
+            confidence=0.85,
+        )
+        assert response.confidence == 0.85
+
 
 class TestAttackerAgent:
     """Tests for AttackerAgent."""
@@ -105,22 +158,10 @@ class TestAttackerAgent:
     @pytest.mark.asyncio
     async def test_analyze(self, attacker, mock_provider):
         """Test vulnerability scanning."""
+        # The agent uses _send_message_json which appends JSON instructions
+        # and then parses the response. Mock returns parseable JSON.
         mock_response = LLMResponse(
-            content="""Found vulnerabilities:
-```json
-{
-  "vulnerabilities": [
-    {
-      "type": "Reentrancy",
-      "severity": "critical",
-      "location": "withdraw()",
-      "description": "External call before state update",
-      "evidence": "call before balance update",
-      "confidence": 0.9
-    }
-  ]
-}
-```""",
+            content='{"vulnerabilities": [{"type": "Reentrancy", "severity": "critical", "location": "withdraw()", "description": "External call before state update", "evidence": "call before balance update", "confidence": 0.9}]}',
             model="test-model",
             tokens_used=100,
         )
@@ -137,38 +178,47 @@ class TestAttackerAgent:
         assert response.agent_role == AgentRole.ATTACKER
         assert len(response.claims) >= 1
 
-    def test_parse_json_claims(self, attacker):
-        """Test parsing JSON vulnerability claims."""
-        response = """
-```json
-[
-  {
-    "type": "Reentrancy",
-    "severity": "high",
-    "location": "withdraw()",
-    "description": "Vulnerable to reentrancy",
-    "evidence": "call before state update",
-    "confidence": 0.85
-  }
-]
-```
-"""
-        claims = attacker._parse_vulnerability_claims(response)
+    def test_extract_claims_from_json(self, attacker):
+        """Test extracting claims from parsed JSON data."""
+        parsed = {
+            "vulnerabilities": [
+                {
+                    "type": "Reentrancy",
+                    "severity": "high",
+                    "location": "withdraw()",
+                    "description": "Vulnerable to reentrancy",
+                    "evidence": "call before state update",
+                    "confidence": 0.85,
+                }
+            ]
+        }
+        claims = attacker._extract_claims(parsed)
         assert len(claims) == 1
         assert claims[0].vulnerability_type == "Reentrancy"
 
-    def test_parse_text_format(self, attacker):
-        """Test parsing text-format vulnerability claims."""
-        response = """
+    def test_fallback_parse_claims(self, attacker):
+        """Test fallback parsing for when JSON parse fails."""
+        raw_content = """
 VULNERABILITY: Integer Overflow
 SEVERITY: medium
 LOCATION: add() function
 DESCRIPTION: Unchecked arithmetic
 CONFIDENCE: 0.7
 """
-        claims = attacker._parse_text_format(response)
+        claims = attacker._fallback_parse_claims(raw_content)
         assert len(claims) == 1
-        assert claims[0].vulnerability_type == "Integer Overflow"
+        assert claims[0]["vulnerability_type"] == "Integer Overflow"
+
+    def test_extract_claims_fallback_path(self, attacker):
+        """Test _extract_claims with raw_content fallback."""
+        parsed = {
+            "raw_content": "VULNERABILITY: Test\nSEVERITY: high\nLOCATION: test()\nDESCRIPTION: Test vuln\nCONFIDENCE: 0.8",
+            "_parse_failed": True,
+        }
+        # No "vulnerabilities" key, so fallback parser extracts from raw_content
+        claims = attacker._extract_claims(parsed)
+        assert len(claims) == 1
+        assert claims[0].vulnerability_type == "Test"
 
 
 class TestDefenderAgent:
@@ -194,15 +244,9 @@ class TestDefenderAgent:
 
     @pytest.mark.asyncio
     async def test_analyze(self, defender, mock_provider):
-        """Test claim defense."""
+        """Test claim defense with JSON structured output."""
         mock_response = LLMResponse(
-            content="""VERDICT: INVALID_CLAIM
-            
-DEFENSE: The contract uses a ReentrancyGuard modifier.
-
-EVIDENCE: The nonReentrant modifier is applied to withdraw().
-
-CONFIDENCE: 0.9""",
+            content='{"verdict": "INVALID_CLAIM", "defense": "The contract uses a ReentrancyGuard modifier.", "evidence": "nonReentrant modifier applied", "mitigations_found": ["ReentrancyGuard"], "recommended_severity": "none", "confidence": 0.9}',
             model="test-model",
             tokens_used=100,
         )
@@ -226,7 +270,7 @@ CONFIDENCE: 0.9""",
         response = await defender.analyze(context)
 
         assert response.agent_role == AgentRole.DEFENDER
-        assert "invalid" in response.reasoning.lower()
+        assert "INVALID_CLAIM" in response.reasoning
 
 
 class TestJudgeAgent:
@@ -250,13 +294,45 @@ class TestJudgeAgent:
         assert judge.name == "Judge"
         assert judge.role == AgentRole.JUDGE
 
-    def test_parse_verdict_valid(self, judge):
-        """Test parsing a valid vulnerability verdict."""
+    def test_extract_verdict_valid(self, judge):
+        """Test extracting a valid vulnerability verdict from JSON."""
+        parsed = {
+            "verdict": "VALID_VULNERABILITY",
+            "severity": "high",
+            "confidence": 0.85,
+            "reasoning": "The vulnerability is confirmed because there is no reentrancy guard.",
+            "recommendation": "Add nonReentrant modifier.",
+            "attacker_score": 0.9,
+            "defender_score": 0.4,
+        }
+        verdict = judge._extract_verdict(parsed, "test-claim")
+
+        assert verdict.is_valid is True
+        assert verdict.severity == "high"
+        assert verdict.confidence == 0.85
+
+    def test_extract_verdict_not_vulnerable(self, judge):
+        """Test extracting a not-vulnerable verdict."""
+        parsed = {
+            "verdict": "NOT_VULNERABLE",
+            "severity": "none",
+            "confidence": 0.9,
+            "reasoning": "The contract properly uses SafeMath.",
+            "recommendation": "No action needed.",
+            "attacker_score": 0.2,
+            "defender_score": 0.9,
+        }
+        verdict = judge._extract_verdict(parsed, "test-claim")
+
+        assert verdict.is_valid is False
+
+    def test_fallback_parse_verdict_valid(self, judge):
+        """Test fallback parsing for valid vulnerability text."""
         response = """VERDICT: VALID_VULNERABILITY
 
 SEVERITY: HIGH
 
-REASONING: The vulnerability is confirmed because there is no reentrancy guard.
+REASONING: The vulnerability is confirmed.
 
 RECOMMENDATION: Add nonReentrant modifier.
 
@@ -265,15 +341,15 @@ CONFIDENCE: 0.85
 ATTACKER_SCORE: 0.9
 DEFENDER_SCORE: 0.4"""
 
-        verdict = judge._parse_verdict(response, "test-claim")
+        verdict = judge._fallback_parse_verdict(response, "test-claim")
 
         assert verdict.is_valid is True
         assert verdict.severity == "high"
         assert verdict.confidence == 0.85
 
-    def test_parse_verdict_invalid(self, judge):
-        """Test parsing an invalid claim verdict."""
-        response = """VERDICT: NOT VULNERABLE
+    def test_fallback_parse_verdict_invalid(self, judge):
+        """Test fallback parsing for invalid claim text."""
+        response = """VERDICT: NOT_VULNERABLE
 
 SEVERITY: none
 
@@ -281,9 +357,26 @@ REASONING: The contract properly uses SafeMath.
 
 CONFIDENCE: 0.9"""
 
-        verdict = judge._parse_verdict(response, "test-claim")
+        verdict = judge._fallback_parse_verdict(response, "test-claim")
 
         assert verdict.is_valid is False
+
+    def test_extract_verdict_with_clarification(self, judge):
+        """Test extracting verdict with clarification flags."""
+        parsed = {
+            "verdict": "NOT_VULNERABLE",
+            "severity": "none",
+            "confidence": 0.5,
+            "reasoning": "Unclear whether the guard is applied.",
+            "recommendation": "Needs review.",
+            "attacker_score": 0.5,
+            "defender_score": 0.5,
+            "needs_clarification": True,
+            "clarification_question": "Is the nonReentrant modifier applied to all external functions?",
+        }
+        verdict = judge._extract_verdict(parsed, "test-claim")
+        assert verdict.confidence == 0.5
+        # needs_clarification is not part of Verdict, it's in metadata
 
 
 class TestVerdict:

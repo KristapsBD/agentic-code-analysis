@@ -22,12 +22,12 @@ EVALUATION CRITERIA (ALL must be met for VALID_VULNERABILITY):
 4. REAL IMPACT - There MUST be actual harm possible (not edge cases)
 
 COMMON FALSE POSITIVES TO REJECT:
-✗ Reentrancy claims when nonReentrant modifier is present
-✗ Access control issues when onlyOwner/proper modifiers exist
-✗ DoS claims about contracts that don't accept ETH (not a vulnerability)
-✗ "Potential" issues that ignore existing checks
-✗ Gas limit concerns without proof of actual problem
-✗ Theoretical attacks that require impossible conditions
+- Reentrancy claims when nonReentrant modifier is present
+- Access control issues when onlyOwner/proper modifiers exist
+- DoS claims about contracts that don't accept ETH (not a vulnerability)
+- "Potential" issues that ignore existing checks
+- Gas limit concerns without proof of actual problem
+- Theoretical attacks that require impossible conditions
 
 SEVERITY GUIDELINES (Be CONSERVATIVE):
 - CRITICAL: Direct, immediate loss of ALL funds with simple attack
@@ -37,18 +37,11 @@ SEVERITY GUIDELINES (Be CONSERVATIVE):
 - INFO: Best practice only, NO security impact
 
 WHEN DEFENDER SHOWS PROTECTION EXISTS:
-- If Defender proves security mechanism is present → VERDICT: NOT_VULNERABLE
-- If Attacker ignores existing protections → VERDICT: NOT_VULNERABLE
-- If claim is theoretical without considering mitigations → VERDICT: NOT_VULNERABLE
+- If Defender proves security mechanism is present -> VERDICT: NOT_VULNERABLE
+- If Attacker ignores existing protections -> VERDICT: NOT_VULNERABLE
+- If claim is theoretical without considering mitigations -> VERDICT: NOT_VULNERABLE
 
-OUTPUT FORMAT:
-VERDICT: VALID_VULNERABILITY or NOT_VULNERABLE
-SEVERITY: critical/high/medium/low/info/none
-CONFIDENCE: 0.0-1.0
-REASONING: Detailed explanation
-RECOMMENDATION: Suggested action
-ATTACKER_SCORE: 0.0-1.0
-DEFENDER_SCORE: 0.0-1.0
+CRITICAL: You MUST always respond with valid JSON. No text outside the JSON object.
 
 BE STRICT. Err on the side of NOT_VULNERABLE unless evidence is overwhelming."""
 
@@ -85,27 +78,62 @@ CRITICAL CHECKS (Answer each):
 
 DEFAULT STANCE: NOT_VULNERABLE (unless proven otherwise)
 
-If the Defender shows that:
-- Security modifiers ARE present (nonReentrant, onlyOwner, etc.)
-- Proper patterns ARE implemented (checks-effects-interactions)
-- The claim ignores existing protections
-→ VERDICT: NOT_VULNERABLE
+Respond with ONLY this JSON structure:
 
-Provide your judgment:
+{{
+  "verdict": "VALID_VULNERABILITY or NOT_VULNERABLE",
+  "severity": "critical|high|medium|low|info|none",
+  "confidence": 0.8,
+  "reasoning": "Detailed explanation of your decision",
+  "recommendation": "What action to take (fix details if valid, or 'No action needed' if not vulnerable)",
+  "attacker_score": 0.7,
+  "defender_score": 0.3,
+  "needs_clarification": false,
+  "clarification_question": ""
+}}
 
-VERDICT: [VALID_VULNERABILITY | NOT_VULNERABLE]
+Set "needs_clarification" to true and provide a specific "clarification_question" ONLY if:
+- Both sides present compelling but contradictory evidence
+- A critical technical detail is ambiguous
+- Your confidence is below 0.7
 
-SEVERITY: [critical|high|medium|low|none]
+Otherwise, render a definitive verdict."""
 
-REASONING:
-[Explain your decision. If NOT_VULNERABLE, state why the Attacker's claim is wrong.]
+CLARIFICATION_PROMPT_TEMPLATE = """You previously requested clarification on a vulnerability claim. Both sides have responded.
 
-CONFIDENCE: [0.0-1.0]
+CONTRACT CODE:
+```
+{contract_code}
+```
 
-RECOMMENDATION:
-[If VALID: what to fix. If NOT_VULNERABLE: "No action needed - properly protected"]
+VULNERABILITY CLAIM:
+- Type: {vulnerability_type}
+- Location: {location}
+- Description: {description}
 
-ATTACKER_SCORE: [0.0-1.0]
-DEFENDER_SCORE: [0.0-1.0]
+YOUR ORIGINAL QUESTION:
+{original_question}
 
-Be STRICT. Most claims about properly implemented security patterns are FALSE POSITIVES."""
+ATTACKER'S RESPONSE:
+{attacker_clarification}
+
+DEFENDER'S RESPONSE:
+{defender_clarification}
+
+PREVIOUS DEBATE CONTEXT:
+- Attacker's main argument: {attacker_argument}
+- Defender's main argument: {defender_argument}
+
+Now render your FINAL verdict. You MUST decide -- no further clarification rounds are allowed.
+
+Respond with ONLY this JSON structure:
+
+{{
+  "verdict": "VALID_VULNERABILITY or NOT_VULNERABLE",
+  "severity": "critical|high|medium|low|info|none",
+  "confidence": 0.8,
+  "reasoning": "Detailed explanation incorporating the clarification responses",
+  "recommendation": "What action to take",
+  "attacker_score": 0.7,
+  "defender_score": 0.3
+}}"""

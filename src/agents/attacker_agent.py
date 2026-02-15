@@ -5,14 +5,20 @@ The Attacker Agent aggressively scans smart contract code for potential
 vulnerabilities, acting as a security auditor trying to find flaws.
 """
 
-import json
-import re
+import logging
 import uuid
 from typing import Any
 
 from src.agents.base_agent import AgentResponse, AgentRole, BaseAgent, VulnerabilityClaim
-from src.knowledge.prompts.attacker import ATTACKER_SYSTEM_PROMPT, SCAN_PROMPT_TEMPLATE
+from src.knowledge.prompts.attacker import (
+    ATTACKER_SYSTEM_PROMPT,
+    CLARIFICATION_RESPONSE_PROMPT_TEMPLATE,
+    REBUTTAL_PROMPT_TEMPLATE,
+    SCAN_PROMPT_TEMPLATE,
+)
 from src.providers.base_provider import BaseLLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class AttackerAgent(BaseAgent):
@@ -61,16 +67,17 @@ class AttackerAgent(BaseAgent):
             contract_code=contract_code,
         )
 
-        response = await self._send_message(prompt, include_history=False, temperature=0.3)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.3)
 
-        # Parse the response to extract claims
-        claims = self._parse_vulnerability_claims(response)
+        # Extract claims from the structured JSON response
+        claims = self._extract_claims(parsed)
 
         return AgentResponse(
             agent_role=self.role,
-            content=response,
+            content=str(parsed),
             claims=claims,
             reasoning="Initial vulnerability scan completed",
+            confidence=0.7,
             metadata={
                 "contract_path": contract_path,
                 "language": language,
@@ -97,87 +104,107 @@ class AttackerAgent(BaseAgent):
         claim = context.get("original_claim", {})
         defense = context.get("defense_argument", "")
 
-        prompt = f"""The Defender has responded to your vulnerability claim.
+        prompt = REBUTTAL_PROMPT_TEMPLATE.format(
+            vulnerability_type=claim.get("vulnerability_type", "Unknown"),
+            location=claim.get("location", "Unknown"),
+            description=claim.get("description", "No description"),
+            defense_argument=defense,
+        )
 
-ORIGINAL CLAIM:
-- Type: {claim.get('vulnerability_type', 'Unknown')}
-- Location: {claim.get('location', 'Unknown')}
-- Description: {claim.get('description', 'No description')}
+        parsed = await self._send_message_json(prompt, include_history=True, temperature=0.3)
 
-DEFENDER'S ARGUMENT:
-{defense}
-
-Analyze the Defender's argument and respond:
-1. If their defense is valid, CONCEDE by starting with "CONCEDE:"
-2. If you still believe the vulnerability exists, provide a REBUTTAL with additional evidence
-
-Format your response as:
-VERDICT: [REBUTTAL or CONCEDE]
-REASONING: [Your detailed reasoning]
-ADDITIONAL_EVIDENCE: [Any new evidence or code analysis, if rebutting]
-CONFIDENCE: [0.0-1.0]"""
-
-        response = await self._send_message(prompt, include_history=True, temperature=0.3)
-
-        # Determine if this is a rebuttal or concession
-        is_concession = "CONCEDE" in response.upper()[:50]
+        # Determine if this is a rebuttal or concession from structured output
+        verdict = parsed.get("verdict", "REBUTTAL").upper()
+        is_concession = "CONCEDE" in verdict
+        confidence = float(parsed.get("confidence", 0.7))
 
         return AgentResponse(
             agent_role=self.role,
-            content=response,
+            content=parsed.get("reasoning", str(parsed)),
             claims=[],
-            reasoning="Rebuttal" if not is_concession else "Concession",
+            reasoning="Concession" if is_concession else "Rebuttal",
+            confidence=confidence,
             metadata={
                 "claim_id": claim.get("id", "unknown"),
                 "is_concession": is_concession,
+                "additional_evidence": parsed.get("additional_evidence", ""),
             },
         )
 
-    def _parse_vulnerability_claims(self, response: str) -> list[VulnerabilityClaim]:
+    async def respond_to_clarification(self, context: dict) -> AgentResponse:
         """
-        Parse the LLM response to extract vulnerability claims.
+        Respond to a clarification request from the Judge.
 
         Args:
-            response: The raw LLM response
+            context: Dictionary containing:
+                - original_claim: The original vulnerability claim
+                - judge_question: The Judge's specific question
+
+        Returns:
+            AgentResponse with targeted answer to the Judge's question
+        """
+        claim = context.get("original_claim", {})
+        judge_question = context.get("judge_question", "")
+
+        prompt = CLARIFICATION_RESPONSE_PROMPT_TEMPLATE.format(
+            vulnerability_type=claim.get("vulnerability_type", "Unknown"),
+            location=claim.get("location", "Unknown"),
+            description=claim.get("description", "No description"),
+            judge_question=judge_question,
+        )
+
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
+
+        confidence = float(parsed.get("confidence", 0.7))
+
+        return AgentResponse(
+            agent_role=self.role,
+            content=parsed.get("answer", str(parsed)),
+            claims=[],
+            reasoning="Clarification response",
+            confidence=confidence,
+            metadata={
+                "claim_id": claim.get("id", "unknown"),
+                "supporting_evidence": parsed.get("supporting_evidence", ""),
+                "is_clarification": True,
+            },
+        )
+
+    def _extract_claims(self, parsed: dict[str, Any]) -> list[VulnerabilityClaim]:
+        """
+        Extract vulnerability claims from the parsed JSON response.
+
+        Args:
+            parsed: Parsed JSON dictionary from the LLM response
 
         Returns:
             List of VulnerabilityClaim objects
         """
-        claims = []
+        claims: list[VulnerabilityClaim] = []
 
-        # Try to extract JSON blocks from the response
-        json_pattern = r"```json\s*([\s\S]*?)\s*```"
-        json_matches = re.findall(json_pattern, response)
+        # Handle both direct vulnerabilities list and wrapped format
+        vuln_list = parsed.get("vulnerabilities", [])
+        if not vuln_list and parsed.get("raw_content"):
+            # Fallback: try to parse from raw content if JSON parsing failed
+            vuln_list = self._fallback_parse_claims(parsed["raw_content"])
 
-        for json_str in json_matches:
-            try:
-                data = json.loads(json_str)
-                if isinstance(data, list):
-                    for item in data:
-                        claim = self._dict_to_claim(item)
-                        if claim:
-                            claims.append(claim)
-                elif isinstance(data, dict):
-                    if "vulnerabilities" in data:
-                        for item in data["vulnerabilities"]:
-                            claim = self._dict_to_claim(item)
-                            if claim:
-                                claims.append(claim)
-                    else:
-                        claim = self._dict_to_claim(data)
-                        if claim:
-                            claims.append(claim)
-            except json.JSONDecodeError:
-                continue
-
-        # If no JSON found, try to parse structured text
-        if not claims:
-            claims = self._parse_text_format(response)
+        for item in vuln_list:
+            claim = self._dict_to_claim(item)
+            if claim:
+                claims.append(claim)
 
         return claims
 
     def _dict_to_claim(self, data: dict[str, Any]) -> VulnerabilityClaim | None:
-        """Convert a dictionary to a VulnerabilityClaim."""
+        """
+        Convert a dictionary to a VulnerabilityClaim.
+
+        Args:
+            data: Dictionary with vulnerability data
+
+        Returns:
+            VulnerabilityClaim or None if conversion fails
+        """
         try:
             return VulnerabilityClaim(
                 id=data.get("id", str(uuid.uuid4())[:8]),
@@ -191,43 +218,40 @@ CONFIDENCE: [0.0-1.0]"""
         except (KeyError, ValueError, TypeError):
             return None
 
-    def _parse_text_format(self, response: str) -> list[VulnerabilityClaim]:
+    def _fallback_parse_claims(self, raw_content: str) -> list[dict[str, Any]]:
         """
-        Parse vulnerability claims from text format.
+        Fallback parser for when JSON parsing fails.
 
-        Looks for patterns like:
-        - VULNERABILITY: <type>
-        - SEVERITY: <level>
-        - LOCATION: <location>
+        Attempts to extract vulnerability information from unstructured text.
+
+        Args:
+            raw_content: Raw text content from the LLM
+
+        Returns:
+            List of vulnerability dictionaries
         """
-        claims = []
+        claims: list[dict[str, Any]] = []
         current_claim: dict[str, Any] = {}
 
-        lines = response.split("\n")
+        lines = raw_content.split("\n")
         for line in lines:
             line = line.strip()
+            upper_line = line.upper()
 
-            if line.upper().startswith("VULNERABILITY:") or line.upper().startswith("TYPE:"):
+            if upper_line.startswith("VULNERABILITY:") or upper_line.startswith("TYPE:"):
                 if current_claim and current_claim.get("vulnerability_type"):
-                    claim = self._dict_to_claim(current_claim)
-                    if claim:
-                        claims.append(claim)
+                    claims.append(current_claim)
                     current_claim = {}
                 current_claim["vulnerability_type"] = line.split(":", 1)[1].strip()
-
-            elif line.upper().startswith("SEVERITY:"):
+            elif upper_line.startswith("SEVERITY:"):
                 current_claim["severity"] = line.split(":", 1)[1].strip()
-
-            elif line.upper().startswith("LOCATION:") or line.upper().startswith("FUNCTION:"):
+            elif upper_line.startswith("LOCATION:") or upper_line.startswith("FUNCTION:"):
                 current_claim["location"] = line.split(":", 1)[1].strip()
-
-            elif line.upper().startswith("DESCRIPTION:"):
+            elif upper_line.startswith("DESCRIPTION:"):
                 current_claim["description"] = line.split(":", 1)[1].strip()
-
-            elif line.upper().startswith("EVIDENCE:") or line.upper().startswith("CODE:"):
+            elif upper_line.startswith("EVIDENCE:") or upper_line.startswith("CODE:"):
                 current_claim["evidence"] = line.split(":", 1)[1].strip()
-
-            elif line.upper().startswith("CONFIDENCE:"):
+            elif upper_line.startswith("CONFIDENCE:"):
                 try:
                     conf_str = line.split(":", 1)[1].strip().replace("%", "")
                     conf = float(conf_str)
@@ -239,8 +263,6 @@ CONFIDENCE: [0.0-1.0]"""
 
         # Don't forget the last claim
         if current_claim and current_claim.get("vulnerability_type"):
-            claim = self._dict_to_claim(current_claim)
-            if claim:
-                claims.append(claim)
+            claims.append(current_claim)
 
         return claims

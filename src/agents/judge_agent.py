@@ -2,16 +2,23 @@
 Judge Agent implementation.
 
 The Judge Agent evaluates arguments from both the Attacker and Defender
-to make final decisions about vulnerability claims.
+to make final decisions about vulnerability claims. It can request
+a single clarification round from both sides when confidence is low.
 """
 
-import re
+import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any
 
 from src.agents.base_agent import AgentResponse, AgentRole, BaseAgent, VulnerabilityClaim
-from src.knowledge.prompts.judge import JUDGE_SYSTEM_PROMPT, JUDGMENT_PROMPT_TEMPLATE
+from src.knowledge.prompts.judge import (
+    CLARIFICATION_PROMPT_TEMPLATE,
+    JUDGE_SYSTEM_PROMPT,
+    JUDGMENT_PROMPT_TEMPLATE,
+)
 from src.providers.base_provider import BaseLLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +57,10 @@ class JudgeAgent(BaseAgent):
     1. Whether the vulnerability claim is valid
     2. The actual severity (may differ from Attacker's claim)
     3. Recommended actions
+
+    When confidence is below a threshold, the Judge can request
+    a single clarification round from both sides before rendering
+    a final verdict.
     """
 
     def __init__(self, provider: BaseLLMProvider):
@@ -70,6 +81,11 @@ class JudgeAgent(BaseAgent):
         """
         Render a verdict on a vulnerability claim.
 
+        Returns an initial assessment. If the Judge's confidence is below
+        a threshold and the response indicates needs_clarification, the
+        orchestrator should call request_clarification() followed by
+        render_final_verdict().
+
         Args:
             context: Dictionary containing:
                 - contract_code: The smart contract source code
@@ -79,7 +95,7 @@ class JudgeAgent(BaseAgent):
                 - debate_history: Optional list of debate exchanges
 
         Returns:
-            AgentResponse containing the verdict
+            AgentResponse containing the verdict (or clarification request)
         """
         contract_code = context.get("contract_code", "")
         claim = context.get("claim")
@@ -113,65 +129,194 @@ class JudgeAgent(BaseAgent):
             debate_history=debate_summary,
         )
 
-        response = await self._send_message(prompt, include_history=False, temperature=0.2)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
 
-        # Parse the verdict
-        verdict = self._parse_verdict(response, claim_dict.get("id", "unknown"))
+        # Extract verdict from structured JSON response
+        verdict = self._extract_verdict(parsed, claim_dict.get("id", "unknown"))
+        needs_clarification = parsed.get("needs_clarification", False)
+        clarification_question = parsed.get("clarification_question", "")
 
         return AgentResponse(
             agent_role=self.role,
-            content=response,
+            content=parsed.get("reasoning", str(parsed)),
             claims=[],
             reasoning=verdict.reasoning,
+            confidence=verdict.confidence,
             metadata={
                 "verdict": verdict.to_dict(),
                 "is_valid": verdict.is_valid,
                 "final_severity": verdict.severity,
                 "judge_confidence": verdict.confidence,
+                "needs_clarification": needs_clarification,
+                "clarification_question": clarification_question,
             },
         )
 
-    def _parse_verdict(self, response: str, claim_id: str) -> Verdict:
+    async def render_final_verdict(self, context: dict) -> AgentResponse:
         """
-        Parse the Judge's response to extract the verdict.
+        Render a final verdict after receiving clarification responses.
+
+        This method is called after the Judge requested clarification and
+        both the Attacker and Defender have responded.
 
         Args:
-            response: The raw LLM response
+            context: Dictionary containing:
+                - contract_code: The smart contract source code
+                - claim: The original vulnerability claim
+                - original_question: The Judge's clarification question
+                - attacker_clarification: Attacker's response to the question
+                - defender_clarification: Defender's response to the question
+                - attacker_argument: The Attacker's main argument
+                - defender_argument: The Defender's main argument
+
+        Returns:
+            AgentResponse containing the final verdict
+        """
+        contract_code = context.get("contract_code", "")
+        claim = context.get("claim", {})
+        original_question = context.get("original_question", "")
+        attacker_clarification = context.get("attacker_clarification", "")
+        defender_clarification = context.get("defender_clarification", "")
+        attacker_argument = context.get("attacker_argument", "")
+        defender_argument = context.get("defender_argument", "")
+
+        if isinstance(claim, VulnerabilityClaim):
+            claim_dict = claim.to_dict()
+        else:
+            claim_dict = claim
+
+        prompt = CLARIFICATION_PROMPT_TEMPLATE.format(
+            contract_code=contract_code,
+            vulnerability_type=claim_dict.get("vulnerability_type", "Unknown"),
+            location=claim_dict.get("location", "Unknown"),
+            description=claim_dict.get("description", "No description"),
+            original_question=original_question,
+            attacker_clarification=attacker_clarification,
+            defender_clarification=defender_clarification,
+            attacker_argument=attacker_argument,
+            defender_argument=defender_argument,
+        )
+
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
+
+        # Extract final verdict
+        verdict = self._extract_verdict(parsed, claim_dict.get("id", "unknown"))
+
+        return AgentResponse(
+            agent_role=self.role,
+            content=parsed.get("reasoning", str(parsed)),
+            claims=[],
+            reasoning=verdict.reasoning,
+            confidence=verdict.confidence,
+            metadata={
+                "verdict": verdict.to_dict(),
+                "is_valid": verdict.is_valid,
+                "final_severity": verdict.severity,
+                "judge_confidence": verdict.confidence,
+                "is_final_after_clarification": True,
+            },
+        )
+
+    def _extract_verdict(self, parsed: dict[str, Any], claim_id: str) -> Verdict:
+        """
+        Extract a Verdict from the parsed JSON response.
+
+        Handles both structured JSON responses and fallback cases
+        where JSON parsing may have partially failed.
+
+        Args:
+            parsed: Parsed JSON dictionary from the LLM response
             claim_id: ID of the claim being judged
 
         Returns:
             Verdict object
         """
-        # Default values
-        is_valid = False
-        severity = "medium"
+        # If JSON parsing failed, try to infer from raw content
+        if parsed.get("_parse_failed"):
+            return self._fallback_parse_verdict(parsed.get("raw_content", ""), claim_id)
+
+        # Extract verdict validity
+        verdict_str = parsed.get("verdict", "NOT_VULNERABLE").upper()
+        is_valid = "VALID_VULNERABILITY" in verdict_str or "VALID" in verdict_str.split("_")[0]
+        if "NOT_VULNERABLE" in verdict_str or "NOT VULNERABLE" in verdict_str:
+            is_valid = False
+
+        # Extract severity
+        severity = parsed.get("severity", "medium")
+        if isinstance(severity, str):
+            severity = severity.lower()
+
+        # Extract confidence
         confidence = 0.5
-        reasoning = ""
-        recommendation = ""
+        try:
+            confidence = float(parsed.get("confidence", 0.5))
+            if confidence > 1:
+                confidence = confidence / 100
+            confidence = max(0.0, min(1.0, confidence))
+        except (ValueError, TypeError):
+            pass
+
+        # Extract scores
         attacker_score = 0.5
         defender_score = 0.5
+        try:
+            attacker_score = float(parsed.get("attacker_score", 0.5))
+            if attacker_score > 1:
+                attacker_score = attacker_score / 100
+        except (ValueError, TypeError):
+            pass
+        try:
+            defender_score = float(parsed.get("defender_score", 0.5))
+            if defender_score > 1:
+                defender_score = defender_score / 100
+        except (ValueError, TypeError):
+            pass
 
-        response_upper = response.upper()
+        return Verdict(
+            claim_id=claim_id,
+            is_valid=is_valid,
+            severity=severity,
+            confidence=confidence,
+            reasoning=str(parsed.get("reasoning", "No detailed reasoning provided"))[:500],
+            recommendation=str(parsed.get("recommendation", "Review and address as needed"))[:300],
+            attacker_score=attacker_score,
+            defender_score=defender_score,
+        )
+
+    def _fallback_parse_verdict(self, raw_content: str, claim_id: str) -> Verdict:
+        """
+        Fallback parser for when JSON parsing fails completely.
+
+        Attempts to extract verdict information from unstructured text.
+
+        Args:
+            raw_content: Raw text content from the LLM
+            claim_id: ID of the claim being judged
+
+        Returns:
+            Verdict object with best-effort extraction
+        """
+        import re
+
+        response_upper = raw_content.upper()
 
         # Determine validity
+        is_valid = False
         if "VERDICT: VALID" in response_upper or "VERDICT: VULNERABLE" in response_upper:
             is_valid = True
         elif "VERDICT: INVALID" in response_upper or "VERDICT: NOT VULNERABLE" in response_upper:
             is_valid = False
-        elif "GUILTY" in response_upper or "CONFIRMS VULNERABILITY" in response_upper:
-            is_valid = True
-        elif "NOT GUILTY" in response_upper or "NO VULNERABILITY" in response_upper:
+        elif "VERDICT: NOT_VULNERABLE" in response_upper:
             is_valid = False
         else:
-            # Try to infer from content
             vuln_indicators = ["is vulnerable", "vulnerability exists", "confirms the", "valid vulnerability"]
             safe_indicators = ["is safe", "not vulnerable", "properly protected", "invalid claim"]
-            
-            vuln_count = sum(1 for ind in vuln_indicators if ind in response.lower())
-            safe_count = sum(1 for ind in safe_indicators if ind in response.lower())
+            vuln_count = sum(1 for ind in vuln_indicators if ind in raw_content.lower())
+            safe_count = sum(1 for ind in safe_indicators if ind in raw_content.lower())
             is_valid = vuln_count > safe_count
 
         # Extract severity
+        severity = "medium"
         severity_match = re.search(
             r"SEVERITY[:\s]*(CRITICAL|HIGH|MEDIUM|LOW|INFO)",
             response_upper
@@ -180,7 +325,8 @@ class JudgeAgent(BaseAgent):
             severity = severity_match.group(1).lower()
 
         # Extract confidence
-        conf_match = re.search(r"CONFIDENCE[:\s]*([0-9.]+)", response, re.IGNORECASE)
+        confidence = 0.5
+        conf_match = re.search(r"CONFIDENCE[:\s]*([0-9.]+)", raw_content, re.IGNORECASE)
         if conf_match:
             try:
                 conf = float(conf_match.group(1))
@@ -191,30 +337,33 @@ class JudgeAgent(BaseAgent):
                 pass
 
         # Extract reasoning
+        reasoning = ""
         reasoning_match = re.search(
             r"REASONING[:\s]*(.+?)(?=RECOMMENDATION|SEVERITY|CONFIDENCE|ATTACKER_SCORE|$)",
-            response,
+            raw_content,
             re.IGNORECASE | re.DOTALL
         )
         if reasoning_match:
             reasoning = reasoning_match.group(1).strip()
         else:
-            # Use first paragraph as reasoning
-            paragraphs = response.split("\n\n")
+            paragraphs = raw_content.split("\n\n")
             if paragraphs:
                 reasoning = paragraphs[0].strip()
 
         # Extract recommendation
+        recommendation = ""
         rec_match = re.search(
             r"RECOMMENDATION[:\s]*(.+?)(?=SEVERITY|CONFIDENCE|ATTACKER_SCORE|$)",
-            response,
+            raw_content,
             re.IGNORECASE | re.DOTALL
         )
         if rec_match:
             recommendation = rec_match.group(1).strip()
 
         # Extract scores
-        attacker_match = re.search(r"ATTACKER_SCORE[:\s]*([0-9.]+)", response, re.IGNORECASE)
+        attacker_score = 0.5
+        defender_score = 0.5
+        attacker_match = re.search(r"ATTACKER_SCORE[:\s]*([0-9.]+)", raw_content, re.IGNORECASE)
         if attacker_match:
             try:
                 attacker_score = float(attacker_match.group(1))
@@ -223,7 +372,7 @@ class JudgeAgent(BaseAgent):
             except ValueError:
                 pass
 
-        defender_match = re.search(r"DEFENDER_SCORE[:\s]*([0-9.]+)", response, re.IGNORECASE)
+        defender_match = re.search(r"DEFENDER_SCORE[:\s]*([0-9.]+)", raw_content, re.IGNORECASE)
         if defender_match:
             try:
                 defender_score = float(defender_match.group(1))

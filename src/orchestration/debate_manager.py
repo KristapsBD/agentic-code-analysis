@@ -3,6 +3,16 @@ Debate Manager for orchestrating agent interactions.
 
 Coordinates the Attacker, Defender, and Judge agents through
 structured debate rounds to analyze smart contracts.
+
+Pipeline flow:
+1. Attacker scans contract -> generates vulnerability claims
+2. For each claim:
+   a. Defender reviews claim
+   b. N rounds of Attacker rebuttal <-> Defender response (with convergence-based early exit)
+   c. Judge renders initial assessment
+   d. If Judge confidence < threshold -> single clarification round from both sides
+   e. Judge renders final verdict
+3. Compile report
 """
 
 import logging
@@ -22,6 +32,10 @@ from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
 
+# Convergence thresholds for early exit
+ATTACKER_CONCEDE_THRESHOLD = 0.4  # Attacker confidence below this -> likely concession
+DEFENDER_SAFE_THRESHOLD = 0.8  # Defender confidence above this -> strong defense
+
 
 @dataclass
 class ClaimResult:
@@ -32,6 +46,7 @@ class ClaimResult:
     debate_rounds: int
     attacker_conceded: bool = False
     defender_acknowledged: bool = False
+    judge_requested_clarification: bool = False
     final_assessment: str = ""
 
     def to_dict(self) -> dict:
@@ -42,6 +57,7 @@ class ClaimResult:
             "debate_rounds": self.debate_rounds,
             "attacker_conceded": self.attacker_conceded,
             "defender_acknowledged": self.defender_acknowledged,
+            "judge_requested_clarification": self.judge_requested_clarification,
             "final_assessment": self.final_assessment,
         }
 
@@ -116,15 +132,20 @@ class DebateManager:
 
     Manages the flow of analysis:
     1. Attacker scans for vulnerabilities
-    2. For each claim, Defender provides counter-argument
-    3. Optional: Multiple rounds of rebuttal
-    4. Judge renders verdict
+    2. For each claim:
+       a. Defender provides counter-argument
+       b. Multiple rounds of rebuttal (with convergence-based early exit)
+       c. Judge renders initial verdict
+       d. Optional: Judge requests clarification if confidence is low
+       e. Final verdict
+    3. Compiles final report
     """
 
     def __init__(
         self,
         provider: BaseLLMProvider,
         max_rounds: int = 2,
+        judge_confidence_threshold: float = 0.7,
         verbose: bool = False,
         console: Optional[Console] = None,
     ):
@@ -134,16 +155,21 @@ class DebateManager:
         Args:
             provider: LLM provider for agent interactions
             max_rounds: Maximum debate rounds per claim
+            judge_confidence_threshold: Confidence below which the Judge requests clarification
             verbose: Whether to print verbose output
             console: Rich console for output (optional)
         """
         self.provider = provider
         self.max_rounds = max_rounds
+        self.judge_confidence_threshold = judge_confidence_threshold
         self.verbose = verbose
         self.console = console or Console()
 
-        logger.debug(f"Initializing DebateManager with provider={provider.provider_name}, max_rounds={max_rounds}")
-        
+        logger.debug(
+            f"Initializing DebateManager with provider={provider.provider_name}, "
+            f"max_rounds={max_rounds}, judge_threshold={judge_confidence_threshold}"
+        )
+
         # Initialize agents
         logger.debug("Creating Attacker Agent")
         self.attacker = AttackerAgent(provider)
@@ -174,7 +200,7 @@ class DebateManager:
         # Initialize result tracking
         detected_language = self.language_detector.detect(contract_code, contract_path)
         logger.info(f"Detected contract language: {detected_language}")
-        
+
         result = DebateResult(
             contract_path=contract_path,
             contract_language=detected_language,
@@ -220,6 +246,9 @@ class DebateManager:
                     f"{claim.vulnerability_type}"
                 )
 
+            # Reset agent histories between claims to prevent context bleed
+            self._reset_claim_context()
+
             claim_result = await self._debate_claim(
                 claim=claim,
                 contract_code=contract_code,
@@ -232,6 +261,7 @@ class DebateManager:
         result.metadata["provider"] = self.provider.provider_name
         result.metadata["model"] = self.provider.model
         result.metadata["max_rounds"] = self.max_rounds
+        result.metadata["judge_confidence_threshold"] = self.judge_confidence_threshold
 
         return result.to_dict()
 
@@ -242,7 +272,15 @@ class DebateManager:
         conversation: Conversation,
     ) -> ClaimResult:
         """
-        Run a debate on a single vulnerability claim.
+        Run a full debate on a single vulnerability claim.
+
+        Flow:
+        1. Defender reviews the claim
+        2. N rounds of Attacker rebuttal <-> Defender response
+           (with convergence-based early exit)
+        3. Judge renders initial assessment
+        4. If Judge confidence < threshold -> clarification round
+        5. Final verdict
 
         Args:
             claim: The vulnerability claim to debate
@@ -254,9 +292,11 @@ class DebateManager:
         """
         attacker_conceded = False
         defender_acknowledged = False
+        judge_requested_clarification = False
         rounds_completed = 0
 
-        # Initial defender response
+        # --- Step 1: Initial Defender response ---
+        logger.debug(f"[{claim.id}] Defender reviewing claim: {claim.vulnerability_type}")
         defender_response = await self.defender.analyze({
             "contract_code": contract_code,
             "claim": claim,
@@ -271,14 +311,26 @@ class DebateManager:
 
         attacker_argument = claim.description + "\n" + claim.evidence
         defender_argument = defender_response.content
+        attacker_confidence = claim.confidence
+        defender_confidence = defender_response.confidence
 
-        # Multi-round debate if enabled
-        debate_history = []
+        # --- Step 2: Multi-round debate with convergence checks ---
+        debate_history: list[dict[str, str]] = []
         for round_num in range(1, self.max_rounds + 1):
             rounds_completed = round_num
 
             if self.verbose:
                 self.console.print(f"  Round {round_num}/{self.max_rounds}")
+
+            # Check for convergence before starting a new round
+            if self._has_converged(attacker_confidence, defender_confidence):
+                logger.info(
+                    f"[{claim.id}] Convergence detected at round {round_num} "
+                    f"(attacker={attacker_confidence:.2f}, defender={defender_confidence:.2f})"
+                )
+                if self.verbose:
+                    self.console.print("  [yellow]Convergence detected - skipping remaining rounds[/yellow]")
+                break
 
             # Attacker rebuttal
             rebuttal_response = await self.attacker.respond_to_defense({
@@ -293,9 +345,12 @@ class DebateManager:
                 claim_id=claim.id,
             )
 
+            attacker_confidence = rebuttal_response.confidence
+
             # Check if attacker conceded
             if rebuttal_response.metadata.get("is_concession"):
                 attacker_conceded = True
+                logger.info(f"[{claim.id}] Attacker conceded at round {round_num}")
                 if self.verbose:
                     self.console.print("  [yellow]Attacker conceded[/yellow]")
                 break
@@ -314,9 +369,12 @@ class DebateManager:
                 claim_id=claim.id,
             )
 
+            defender_confidence = defender_rebuttal.confidence
+
             # Check if defender acknowledged vulnerability
             if defender_rebuttal.metadata.get("acknowledges_vulnerability"):
                 defender_acknowledged = True
+                logger.info(f"[{claim.id}] Defender acknowledged vulnerability at round {round_num}")
                 if self.verbose:
                     self.console.print("  [yellow]Defender acknowledged vulnerability[/yellow]")
                 break
@@ -338,7 +396,7 @@ class DebateManager:
             defender_argument=defender_argument,
         )
 
-        # Judge renders verdict
+        # --- Step 3: Judge renders initial assessment ---
         if self.verbose:
             self.console.print("  [bold]Judge rendering verdict...[/bold]")
 
@@ -357,7 +415,37 @@ class DebateManager:
             claim_id=claim.id,
         )
 
-        # Extract verdict
+        # --- Step 4: Check if Judge needs clarification ---
+        needs_clarification = judge_response.metadata.get("needs_clarification", False)
+        clarification_question = judge_response.metadata.get("clarification_question", "")
+        judge_confidence = judge_response.confidence
+
+        if (
+            needs_clarification
+            and clarification_question
+            and judge_confidence < self.judge_confidence_threshold
+        ):
+            judge_requested_clarification = True
+            logger.info(
+                f"[{claim.id}] Judge requesting clarification "
+                f"(confidence={judge_confidence:.2f} < threshold={self.judge_confidence_threshold:.2f})"
+            )
+            if self.verbose:
+                self.console.print(
+                    f"  [bold yellow]Judge requesting clarification[/bold yellow] "
+                    f"(confidence: {judge_confidence:.2f})"
+                )
+
+            judge_response = await self._run_clarification_round(
+                claim=claim,
+                contract_code=contract_code,
+                conversation=conversation,
+                clarification_question=clarification_question,
+                attacker_argument=attacker_argument,
+                defender_argument=defender_argument,
+            )
+
+        # --- Step 5: Extract final verdict ---
         verdict_dict = judge_response.metadata.get("verdict", {})
         verdict = Verdict(
             claim_id=claim.id,
@@ -380,11 +468,128 @@ class DebateManager:
             debate_rounds=rounds_completed,
             attacker_conceded=attacker_conceded,
             defender_acknowledged=defender_acknowledged,
+            judge_requested_clarification=judge_requested_clarification,
             final_assessment=judge_response.content[:500],
         )
 
-    def reset_agents(self) -> None:
-        """Clear agent conversation histories."""
+    async def _run_clarification_round(
+        self,
+        claim: VulnerabilityClaim,
+        contract_code: str,
+        conversation: Conversation,
+        clarification_question: str,
+        attacker_argument: str,
+        defender_argument: str,
+    ) -> Any:
+        """
+        Run a single clarification round where the Judge asks both sides a question.
+
+        Args:
+            claim: The vulnerability claim being debated
+            contract_code: The contract source code
+            conversation: Conversation tracker
+            clarification_question: The Judge's specific question
+            attacker_argument: The Attacker's latest argument
+            defender_argument: The Defender's latest argument
+
+        Returns:
+            AgentResponse from the Judge with the final verdict
+        """
+        # Record the Judge's clarification request
+        conversation.add_turn(
+            TurnType.CLARIFICATION,
+            self.judge.name,
+            clarification_question,
+            claim_id=claim.id,
+        )
+
+        if self.verbose:
+            self.console.print(f"  [dim]Judge asks: {clarification_question[:100]}...[/dim]")
+
+        # Get Attacker's response to the clarification
+        attacker_clarification = await self.attacker.respond_to_clarification({
+            "original_claim": claim.to_dict(),
+            "judge_question": clarification_question,
+        })
+
+        conversation.add_turn(
+            TurnType.CLARIFICATION_RESPONSE,
+            self.attacker.name,
+            attacker_clarification.content,
+            claim_id=claim.id,
+        )
+
+        # Get Defender's response to the clarification
+        defender_clarification = await self.defender.respond_to_clarification({
+            "original_claim": claim.to_dict(),
+            "judge_question": clarification_question,
+        })
+
+        conversation.add_turn(
+            TurnType.CLARIFICATION_RESPONSE,
+            self.defender.name,
+            defender_clarification.content,
+            claim_id=claim.id,
+        )
+
+        if self.verbose:
+            self.console.print("  [bold]Judge rendering final verdict after clarification...[/bold]")
+
+        # Judge renders final verdict with clarification responses
+        final_response = await self.judge.render_final_verdict({
+            "contract_code": contract_code,
+            "claim": claim,
+            "original_question": clarification_question,
+            "attacker_clarification": attacker_clarification.content,
+            "defender_clarification": defender_clarification.content,
+            "attacker_argument": attacker_argument,
+            "defender_argument": defender_argument,
+        })
+
+        conversation.add_turn(
+            TurnType.JUDGMENT,
+            self.judge.name,
+            final_response.content,
+            claim_id=claim.id,
+            metadata={"is_final_after_clarification": True},
+        )
+
+        return final_response
+
+    @staticmethod
+    def _has_converged(attacker_confidence: float, defender_confidence: float) -> bool:
+        """
+        Check if the debate has converged based on agent confidence scores.
+
+        Convergence occurs when:
+        - The Attacker's confidence drops below the concession threshold, OR
+        - The Defender's confidence rises above the safe threshold
+
+        Args:
+            attacker_confidence: The Attacker's current confidence in the claim
+            defender_confidence: The Defender's current confidence that the code is safe
+
+        Returns:
+            True if convergence is detected
+        """
+        if attacker_confidence < ATTACKER_CONCEDE_THRESHOLD:
+            return True
+        if defender_confidence > DEFENDER_SAFE_THRESHOLD:
+            return True
+        return False
+
+    def _reset_claim_context(self) -> None:
+        """
+        Clear agent conversation histories between claims.
+
+        Prevents context bleed from one claim's debate into another,
+        ensuring each claim is evaluated independently.
+        """
+        logger.debug("Resetting agent histories for new claim")
         self.attacker.clear_history()
         self.defender.clear_history()
         self.judge.clear_history()
+
+    def reset_agents(self) -> None:
+        """Clear agent conversation histories (public API)."""
+        self._reset_claim_context()

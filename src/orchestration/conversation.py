@@ -18,6 +18,8 @@ class TurnType(str, Enum):
     DEFENSE = "defense"
     REBUTTAL = "rebuttal"
     JUDGMENT = "judgment"
+    CLARIFICATION = "clarification"
+    CLARIFICATION_RESPONSE = "clarification_response"
     SYSTEM = "system"
 
 
@@ -183,6 +185,50 @@ class Conversation:
     def get_turns_by_type(self, turn_type: TurnType) -> list[ConversationTurn]:
         """Get all turns of a specific type."""
         return [t for t in self.turns if t.turn_type == turn_type]
+
+    def distill_claim_context(self, claim_id: str) -> dict[str, Any]:
+        """
+        Distill the debate for a specific claim into a structured summary.
+
+        Instead of passing raw conversation text between agents, this method
+        creates a clean, focused summary of the key arguments and their
+        evolution across rounds.
+
+        Args:
+            claim_id: ID of the claim to summarize
+
+        Returns:
+            Dictionary with distilled context:
+                - attacker_key_points: list of the Attacker's main arguments
+                - defender_key_points: list of the Defender's main arguments
+                - areas_of_agreement: points both sides agree on
+                - areas_of_contention: points still in dispute
+                - round_count: number of debate rounds completed
+        """
+        claim_turns = self.get_turns_by_claim(claim_id)
+
+        attacker_points: list[str] = []
+        defender_points: list[str] = []
+
+        for turn in claim_turns:
+            # Truncate long arguments to their first 300 chars for distillation
+            summary = turn.content[:300]
+            if len(turn.content) > 300:
+                summary += "..."
+
+            if turn.turn_type in (TurnType.ATTACK, TurnType.REBUTTAL):
+                attacker_points.append(summary)
+            elif turn.turn_type == TurnType.DEFENSE:
+                defender_points.append(summary)
+
+        rounds = self.debate_rounds.get(claim_id, [])
+
+        return {
+            "attacker_key_points": attacker_points,
+            "defender_key_points": defender_points,
+            "round_count": len(rounds),
+            "total_turns": len(claim_turns),
+        }
 
     def get_context_summary(self, claim_id: Optional[str] = None) -> str:
         """

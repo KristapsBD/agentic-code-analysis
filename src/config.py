@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     default_temperature: float = Field(
         default=0.7, alias="DEFAULT_TEMPERATURE", ge=0.0, le=2.0
     )
+    judge_confidence_threshold: float = Field(
+        default=0.7, alias="JUDGE_CONFIDENCE_THRESHOLD", ge=0.0, le=1.0
+    )
+    max_context_tokens: int = Field(
+        default=100_000, alias="MAX_CONTEXT_TOKENS", ge=1000
+    )
+    max_history_turns: int = Field(
+        default=4, alias="MAX_HISTORY_TURNS", ge=1, le=20
+    )
 
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

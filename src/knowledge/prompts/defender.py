@@ -31,15 +31,7 @@ DEFENSE STRATEGIES:
 4. Point out context that invalidates the claim
 5. Clarify misunderstandings about code behavior
 
-OUTPUT FORMAT:
-Provide a structured defense with:
-- VERDICT: VALID/INVALID/PARTIALLY_VALID
-- DEFENSE: Your main argument against the claim
-- EVIDENCE: Code references supporting your defense
-- MITIGATIONS: Existing protections in the code
-- CONFIDENCE: 0.0-1.0 (confidence the code is SAFE)
-
-Be honest - if the vulnerability is real, say so."""
+CRITICAL: You MUST always respond with valid JSON. No text outside the JSON object."""
 
 DEFENSE_PROMPT_TEMPLATE = """Review the following vulnerability claim made by the Attacker.
 
@@ -70,21 +62,59 @@ Consider:
 - Are external calls properly handled?
 - Does the business logic prevent exploitation?
 
-Provide your defense:
+Respond with ONLY this JSON structure:
 
-VERDICT: [VALID_VULNERABILITY | INVALID_CLAIM | PARTIALLY_MITIGATED]
+{{
+  "verdict": "VALID_VULNERABILITY or INVALID_CLAIM or PARTIALLY_MITIGATED",
+  "defense": "Your detailed argument explaining why the claim is valid or invalid",
+  "evidence": "Quote specific code that supports your argument",
+  "mitigations_found": ["List of existing protections you identified"],
+  "recommended_severity": "critical|high|medium|low|info|none",
+  "confidence": 0.8
+}}"""
 
-DEFENSE:
-[Your detailed argument explaining why the claim is valid or invalid]
+REBUTTAL_RESPONSE_PROMPT_TEMPLATE = """The Attacker has provided a rebuttal to your defense.
 
-EVIDENCE:
-[Quote specific code that supports your argument]
+VULNERABILITY CLAIM:
+- Type: {vulnerability_type}
+- Location: {location}
+- Description: {description}
 
-MITIGATIONS_FOUND:
-[List any existing protections you identified]
+YOUR ORIGINAL DEFENSE:
+{original_defense}
 
-RECOMMENDED_SEVERITY: [critical|high|medium|low|info|none]
+ATTACKER'S REBUTTAL:
+{rebuttal}
 
-CONFIDENCE: [0.0-1.0 that the code is SAFE from this specific vulnerability]
+Analyze the rebuttal and respond:
+1. If the Attacker raises valid new evidence, ACKNOWLEDGE the vulnerability
+2. If your defense still holds, MAINTAIN your position with clarification
 
-Be thorough and objective in your analysis."""
+Respond with ONLY this JSON structure:
+
+{{
+  "verdict": "ACKNOWLEDGE_VULNERABILITY or MAINTAIN_DEFENSE",
+  "reasoning": "Your detailed analysis of the rebuttal and why you maintain or change your position",
+  "final_assessment": "Your final opinion on the validity of this claim",
+  "confidence": 0.8
+}}"""
+
+CLARIFICATION_RESPONSE_PROMPT_TEMPLATE = """The Judge has requested clarification on a vulnerability claim you are defending against.
+
+VULNERABILITY CLAIM:
+- Type: {vulnerability_type}
+- Location: {location}
+- Description: {description}
+
+JUDGE'S QUESTION:
+{judge_question}
+
+Provide a focused, specific answer to the Judge's question. Be precise and reference the actual code.
+
+Respond with ONLY this JSON structure:
+
+{{
+  "answer": "Your focused answer to the Judge's specific question",
+  "supporting_evidence": "Code references or technical details that support your answer",
+  "confidence": 0.8
+}}"""

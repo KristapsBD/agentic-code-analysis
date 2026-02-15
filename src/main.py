@@ -167,6 +167,7 @@ async def _run_analysis(
     debate_manager = DebateManager(
         provider=llm_provider,
         max_rounds=rounds,
+        judge_confidence_threshold=settings.judge_confidence_threshold,
         verbose=verbose,
     )
 

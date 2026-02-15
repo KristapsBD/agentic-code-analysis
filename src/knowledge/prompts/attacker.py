@@ -35,16 +35,7 @@ ANALYSIS APPROACH:
 4. Examine trust assumptions
 5. Consider economic attack vectors
 
-OUTPUT FORMAT:
-For each vulnerability found, provide:
-- Type: The category of vulnerability
-- Severity: critical/high/medium/low/info
-- Location: Function name or code location
-- Description: Clear explanation of the issue
-- Evidence: Relevant code snippet or reasoning
-- Confidence: 0.0-1.0 (your confidence in this finding)
-
-Wrap your findings in a JSON block for easy parsing."""
+CRITICAL: You MUST always respond with valid JSON. No text outside the JSON object."""
 
 SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vulnerabilities.
 
@@ -75,9 +66,8 @@ Focus on:
 - Denial of service vectors
 - Logic errors
 
-Format your findings as a JSON array:
+Respond with ONLY this JSON structure:
 
-```json
 {{
   "vulnerabilities": [
     {{
@@ -91,8 +81,46 @@ Format your findings as a JSON array:
     }}
   ]
 }}
-```
 
-If no vulnerabilities are found, explain why the contract appears secure and still return an empty vulnerabilities array.
+If no vulnerabilities are found, return {{"vulnerabilities": []}}."""
 
-Begin your analysis:"""
+REBUTTAL_PROMPT_TEMPLATE = """The Defender has responded to your vulnerability claim.
+
+ORIGINAL CLAIM:
+- Type: {vulnerability_type}
+- Location: {location}
+- Description: {description}
+
+DEFENDER'S ARGUMENT:
+{defense_argument}
+
+Analyze the Defender's argument and respond.
+
+Respond with ONLY this JSON structure:
+
+{{
+  "verdict": "REBUTTAL or CONCEDE",
+  "reasoning": "Your detailed reasoning about why the vulnerability still exists or why you concede",
+  "additional_evidence": "Any new evidence or code analysis supporting your position",
+  "confidence": 0.8
+}}"""
+
+CLARIFICATION_RESPONSE_PROMPT_TEMPLATE = """The Judge has requested clarification on a vulnerability claim you made.
+
+ORIGINAL CLAIM:
+- Type: {vulnerability_type}
+- Location: {location}
+- Description: {description}
+
+JUDGE'S QUESTION:
+{judge_question}
+
+Provide a focused, specific answer to the Judge's question. Be precise and reference the actual code.
+
+Respond with ONLY this JSON structure:
+
+{{
+  "answer": "Your focused answer to the Judge's specific question",
+  "supporting_evidence": "Code references or technical details that support your answer",
+  "confidence": 0.8
+}}"""
