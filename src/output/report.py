@@ -58,7 +58,6 @@ class Report:
     debate_rounds: int
     provider: str = ""
     model: str = ""
-    total_tokens: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -101,7 +100,6 @@ class Report:
                 "provider": self.provider,
                 "model": self.model,
                 "debate_rounds": self.debate_rounds,
-                "total_tokens": self.total_tokens,
             },
             "metadata": self.metadata,
         }
@@ -170,7 +168,6 @@ class ReportGenerator:
             debate_rounds=result.get("metadata", {}).get("max_rounds", 0),
             provider=result.get("metadata", {}).get("provider", ""),
             model=result.get("metadata", {}).get("model", ""),
-            total_tokens=result.get("total_tokens_used", 0),
             metadata=result.get("metadata", {}),
         )
 
@@ -244,8 +241,7 @@ class ReportGenerator:
 
         # Analysis info
         console.print(
-            f"\n[dim]Analysis performed with {report.provider}/{report.model} "
-            f"({report.total_tokens:,} tokens used)[/dim]"
+            f"\n[dim]Analysis performed with {report.provider}/{report.model}[/dim]"
         )
 
     def save_json(self, report: Report, output_path: Path) -> None:
@@ -324,7 +320,6 @@ class ReportGenerator:
             f"- **Provider:** {report.provider}",
             f"- **Model:** {report.model}",
             f"- **Debate Rounds:** {report.debate_rounds}",
-            f"- **Tokens Used:** {report.total_tokens:,}",
         ])
 
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -262,11 +262,6 @@ class Conversation:
             "metadata": self.metadata,
         }
 
-    def estimate_tokens(self) -> int:
-        """Estimate the total tokens in the conversation."""
-        total_chars = sum(len(t.content) for t in self.turns)
-        return total_chars // 4  # Rough estimate
-
     def clear(self) -> None:
         """Clear all conversation history."""
         self.turns = []

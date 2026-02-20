@@ -16,11 +16,6 @@ from src.providers.base_provider import BaseLLMProvider, Message
 
 logger = logging.getLogger(__name__)
 
-# Default token budget: 80% of a typical 128k context window
-DEFAULT_MAX_CONTEXT_TOKENS = 100_000
-# Maximum number of history message pairs (user+assistant) to keep in sliding window
-DEFAULT_MAX_HISTORY_TURNS = 4
-
 
 class AgentRole(str, Enum):
     """Roles that agents can take in the system."""
@@ -127,26 +122,11 @@ class BaseAgent(ABC):
         name: str,
         role: AgentRole,
         system_prompt: str,
-        max_context_tokens: int = DEFAULT_MAX_CONTEXT_TOKENS,
-        max_history_turns: int = DEFAULT_MAX_HISTORY_TURNS,
     ):
-        """
-        Initialize the agent.
-
-        Args:
-            provider: LLM provider for generating responses
-            name: Human-readable name for the agent
-            role: The role this agent plays
-            system_prompt: System prompt defining agent behavior
-            max_context_tokens: Maximum tokens allowed in the context window
-            max_history_turns: Maximum number of user+assistant turn pairs to keep
-        """
         self.provider = provider
         self.name = name
         self.role = role
         self.system_prompt = system_prompt
-        self.max_context_tokens = max_context_tokens
-        self.max_history_turns = max_history_turns
         self.conversation_history: list[Message] = []
 
     @abstractmethod
@@ -163,94 +143,12 @@ class BaseAgent(ABC):
         """
         pass
 
-    @staticmethod
-    def estimate_tokens(text: str) -> int:
-        """
-        Estimate the number of tokens in a text string.
-
-        Uses a rough heuristic of ~4 characters per token.
-
-        Args:
-            text: The text to estimate tokens for
-
-        Returns:
-            Estimated token count
-        """
-        return len(text) // 4
-
-    def estimate_payload_tokens(
-        self,
-        user_message: str,
-        include_history: bool = True,
-    ) -> int:
-        """
-        Estimate the total tokens that would be sent in the next API call.
-
-        Args:
-            user_message: The user message to be sent
-            include_history: Whether conversation history will be included
-
-        Returns:
-            Estimated total token count for the payload
-        """
-        total = self.estimate_tokens(self.system_prompt)
-        total += self.estimate_tokens(user_message)
-
-        if include_history:
-            for msg in self.conversation_history:
-                total += self.estimate_tokens(msg.content)
-
-        return total
-
-    def _trim_history(self) -> None:
-        """
-        Trim conversation history to stay within the sliding window.
-
-        Keeps the most recent `max_history_turns` pairs of messages
-        (each pair = one user message + one assistant response).
-        """
-        max_messages = self.max_history_turns * 2
-        if len(self.conversation_history) > max_messages:
-            trimmed_count = len(self.conversation_history) - max_messages
-            logger.debug(
-                f"[{self.name}] Trimming {trimmed_count} old messages from history "
-                f"(keeping last {max_messages})"
-            )
-            self.conversation_history = self.conversation_history[-max_messages:]
-
     async def _send_message(
         self,
         user_message: str,
         include_history: bool = True,
         temperature: Optional[float] = None,
     ) -> str:
-        """
-        Send a message to the LLM and get a response.
-
-        Applies sliding window trimming and token budget checks
-        before sending.
-
-        Args:
-            user_message: The message to send
-            include_history: Whether to include conversation history
-            temperature: Optional temperature override
-
-        Returns:
-            The LLM's response content
-        """
-        # Trim history before building the payload
-        if include_history:
-            self._trim_history()
-
-        # Check token budget
-        estimated_tokens = self.estimate_payload_tokens(user_message, include_history)
-        if estimated_tokens > self.max_context_tokens:
-            logger.warning(
-                f"[{self.name}] Estimated payload ({estimated_tokens} tokens) exceeds "
-                f"budget ({self.max_context_tokens}). Sending without history."
-            )
-            include_history = False
-
         messages = [Message(role="system", content=self.system_prompt)]
 
         if include_history:
@@ -348,7 +246,3 @@ class BaseAgent(ABC):
         """Clear the conversation history."""
         self.conversation_history = []
 
-    def get_history_tokens(self) -> int:
-        """Estimate tokens in conversation history."""
-        total_chars = sum(len(msg.content) for msg in self.conversation_history)
-        return total_chars // 4

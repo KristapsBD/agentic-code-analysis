@@ -73,7 +73,6 @@ class DebateResult:
     initial_claims: list[VulnerabilityClaim] = field(default_factory=list)
     claim_results: list[ClaimResult] = field(default_factory=list)
     conversation: Optional[Conversation] = None
-    total_tokens_used: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -121,7 +120,6 @@ class DebateResult:
             "high_count": self.high_count,
             "initial_claims": [c.to_dict() for c in self.initial_claims],
             "claim_results": [r.to_dict() for r in self.claim_results],
-            "total_tokens_used": self.total_tokens_used,
             "metadata": self.metadata,
         }
 

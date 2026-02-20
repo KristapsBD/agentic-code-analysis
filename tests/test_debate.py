@@ -148,12 +148,6 @@ class TestConversation:
         turns = conversation.get_turns_by_claim("test-1")
         assert len(turns) == 2
 
-    def test_estimate_tokens(self, conversation):
-        """Test token estimation."""
-        conversation.add_turn(TurnType.ATTACK, "Attacker", "A" * 100)
-        tokens = conversation.estimate_tokens()
-        assert tokens == 25  # 100 chars / 4
-
     def test_distill_claim_context(self, conversation):
         """Test context distillation for a claim."""
         conversation.add_turn(TurnType.ATTACK, "Attacker", "Vulnerable code", claim_id="c1")
