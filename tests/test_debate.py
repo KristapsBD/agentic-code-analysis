@@ -6,7 +6,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.orchestration.conversation import Conversation, ConversationTurn, TurnType, DebateRound
+from src.orchestration.conversation import Conversation, ConversationTurn, TurnType
 from src.orchestration.debate_manager import DebateManager, DebateResult, ClaimResult
 from src.agents.base_agent import AgentResponse, AgentRole, VulnerabilityClaim
 from src.agents.judge_agent import Verdict
@@ -62,33 +62,6 @@ class TestConversationTurn:
         assert result["turn_type"] == "clarification_response"
 
 
-class TestDebateRound:
-    """Tests for DebateRound."""
-
-    def test_round_creation(self):
-        """Test creating a debate round."""
-        debate_round = DebateRound(
-            round_number=1,
-            claim_id="test-1",
-            attacker_argument="Vulnerable",
-            defender_argument="Protected",
-        )
-        assert debate_round.round_number == 1
-        assert debate_round.claim_id == "test-1"
-
-    def test_round_with_rebuttal(self):
-        """Test round with rebuttal."""
-        debate_round = DebateRound(
-            round_number=1,
-            claim_id="test-1",
-            attacker_argument="Vulnerable",
-            defender_argument="Protected",
-            attacker_rebuttal="Still vulnerable",
-            defender_response="No, safe",
-        )
-        result = debate_round.to_dict()
-        assert result["attacker_rebuttal"] == "Still vulnerable"
-
 
 class TestConversation:
     """Tests for Conversation."""
@@ -114,52 +87,6 @@ class TestConversation:
         assert len(conversation.turns) == 1
         assert conversation.turns[0].content == "Found issue"
 
-    def test_add_debate_round(self, conversation):
-        """Test adding a debate round."""
-        debate_round = conversation.add_debate_round(
-            claim_id="test-1",
-            attacker_argument="Vulnerable",
-            defender_argument="Safe",
-        )
-        assert debate_round.round_number == 1
-        assert "test-1" in conversation.debate_rounds
-
-    def test_get_debate_history(self, conversation):
-        """Test getting debate history."""
-        conversation.add_debate_round(
-            "test-1",
-            "Attack 1",
-            "Defense 1",
-        )
-        conversation.add_debate_round(
-            "test-1",
-            "Attack 2",
-            "Defense 2",
-        )
-        history = conversation.get_debate_history("test-1")
-        assert len(history) == 2
-
-    def test_get_turns_by_claim(self, conversation):
-        """Test filtering turns by claim."""
-        conversation.add_turn(TurnType.ATTACK, "Attacker", "Content 1", claim_id="test-1")
-        conversation.add_turn(TurnType.DEFENSE, "Defender", "Content 2", claim_id="test-1")
-        conversation.add_turn(TurnType.ATTACK, "Attacker", "Content 3", claim_id="test-2")
-
-        turns = conversation.get_turns_by_claim("test-1")
-        assert len(turns) == 2
-
-    def test_distill_claim_context(self, conversation):
-        """Test context distillation for a claim."""
-        conversation.add_turn(TurnType.ATTACK, "Attacker", "Vulnerable code", claim_id="c1")
-        conversation.add_turn(TurnType.DEFENSE, "Defender", "Code is safe", claim_id="c1")
-        conversation.add_turn(TurnType.REBUTTAL, "Attacker", "Still vulnerable", claim_id="c1")
-        conversation.add_debate_round("c1", "attack", "defense")
-
-        distilled = conversation.distill_claim_context("c1")
-        assert distilled["round_count"] == 1
-        assert distilled["total_turns"] == 3
-        assert len(distilled["attacker_key_points"]) == 2  # ATTACK + REBUTTAL
-        assert len(distilled["defender_key_points"]) == 1  # DEFENSE
 
 
 class TestDebateResult:

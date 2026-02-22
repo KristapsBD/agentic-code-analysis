@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from rich.console import Console
-from rich.progress import Progress, TaskID
 from rich.table import Table
 
 from src.config import LLMProvider, settings

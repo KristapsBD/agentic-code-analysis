@@ -51,38 +51,6 @@ class VulnerabilityClaim:
 
 
 @dataclass
-class ClaimContext:
-    """
-    Structured context passed between agents for a single claim.
-
-    Distills the key arguments into a clean format instead of passing raw text,
-    reducing token waste and ensuring agents see focused context.
-    """
-
-    claim: VulnerabilityClaim
-    contract_code: str
-    attacker_argument: str = ""
-    defender_argument: str = ""
-    attacker_confidence: float = 0.0
-    defender_confidence: float = 0.0
-    debate_history: list[dict[str, str]] = field(default_factory=list)
-    judge_question: str = ""
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary format."""
-        return {
-            "claim": self.claim.to_dict(),
-            "contract_code": self.contract_code,
-            "attacker_argument": self.attacker_argument,
-            "defender_argument": self.defender_argument,
-            "attacker_confidence": self.attacker_confidence,
-            "defender_confidence": self.defender_confidence,
-            "debate_history": self.debate_history,
-            "judge_question": self.judge_question,
-        }
-
-
-@dataclass
 class AgentResponse:
     """Response from an agent's analysis."""
 

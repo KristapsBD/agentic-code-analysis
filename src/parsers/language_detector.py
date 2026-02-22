@@ -129,25 +129,3 @@ class LanguageDetector:
 
         return SmartContractLanguage.UNKNOWN
 
-    def get_parser_for_language(self, language: str) -> Optional[str]:
-        """
-        Get the appropriate parser class name for a language.
-
-        Args:
-            language: The detected language
-
-        Returns:
-            Parser class name or None if not supported
-        """
-        parser_map = {
-            "solidity": "SolidityParser",
-            "vyper": "VyperParser",
-            "rust": "RustParser",
-            "move": "MoveParser",
-        }
-        return parser_map.get(language.lower())
-
-    def is_supported(self, language: str) -> bool:
-        """Check if a language is supported for analysis."""
-        supported = {"solidity", "vyper", "rust", "move"}
-        return language.lower() in supported

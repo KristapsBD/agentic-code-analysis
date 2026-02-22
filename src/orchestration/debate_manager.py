@@ -387,13 +387,6 @@ class DebateManager:
             attacker_argument = rebuttal_response.content
             defender_argument = defender_rebuttal.content
 
-        # Add debate round to conversation
-        conversation.add_debate_round(
-            claim_id=claim.id,
-            attacker_argument=attacker_argument,
-            defender_argument=defender_argument,
-        )
-
         # --- Step 3: Judge renders initial assessment ---
         if self.verbose:
             self.console.print("  [bold]Judge rendering verdict...[/bold]")

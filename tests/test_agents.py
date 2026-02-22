@@ -5,7 +5,7 @@ Tests for agent implementations.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.agents.base_agent import AgentRole, VulnerabilityClaim, AgentResponse, ClaimContext
+from src.agents.base_agent import AgentRole, VulnerabilityClaim, AgentResponse
 from src.agents.attacker_agent import AttackerAgent
 from src.agents.defender_agent import DefenderAgent
 from src.agents.judge_agent import JudgeAgent, Verdict
@@ -46,49 +46,6 @@ class TestVulnerabilityClaim:
         assert result["vulnerability_type"] == "Reentrancy"
         assert result["confidence"] == 0.8
 
-
-class TestClaimContext:
-    """Tests for ClaimContext."""
-
-    def test_claim_context_creation(self):
-        """Test creating a claim context."""
-        claim = VulnerabilityClaim(
-            id="test-1",
-            vulnerability_type="Reentrancy",
-            severity="high",
-            location="withdraw()",
-            description="Test",
-            evidence="Test",
-            confidence=0.9,
-        )
-        ctx = ClaimContext(
-            claim=claim,
-            contract_code="contract Test {}",
-            attacker_argument="The code is vulnerable",
-            defender_argument="The code is safe",
-        )
-        assert ctx.claim.id == "test-1"
-        assert ctx.attacker_argument == "The code is vulnerable"
-
-    def test_claim_context_to_dict(self):
-        """Test converting claim context to dict."""
-        claim = VulnerabilityClaim(
-            id="test-1",
-            vulnerability_type="Reentrancy",
-            severity="high",
-            location="withdraw()",
-            description="Test",
-            evidence="Test",
-            confidence=0.9,
-        )
-        ctx = ClaimContext(
-            claim=claim,
-            contract_code="contract Test {}",
-        )
-        result = ctx.to_dict()
-        assert "claim" in result
-        assert "contract_code" in result
-        assert result["attacker_confidence"] == 0.0
 
 
 class TestAgentResponse:
