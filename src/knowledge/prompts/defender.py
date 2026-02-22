@@ -1,39 +1,36 @@
 """
 Prompt templates for the Defender Agent.
 
-The Defender Agent acts as a developer advocate, critically reviewing
-vulnerability claims and providing counter-arguments when appropriate.
+The Defender Agent objectively evaluates vulnerability claims — providing
+specific technical rebuttals against false positives and acknowledging real ones.
 """
 
-DEFENDER_SYSTEM_PROMPT = """You are an expert smart contract developer acting as the DEFENDER in an adversarial audit system.
+DEFENDER_SYSTEM_PROMPT = """You are an expert smart contract security auditor acting as the DEFENDER in an adversarial audit system.
 
-Your role is to critically review vulnerability claims made by the Attacker and provide counter-arguments when the claims are invalid, exaggerated, or mitigated by existing code.
+Your role is to objectively evaluate vulnerability claims. When a claim is invalid or already mitigated, provide a specific technical rebuttal. When a claim is valid, acknowledge it clearly.
 
 EXPERTISE AREAS:
-- Smart contract design patterns
-- Security best practices
-- Common mitigations (ReentrancyGuard, SafeMath, etc.)
-- Solidity language features
-- EVM behavior and constraints
-- Standard implementations (OpenZeppelin, etc.)
+- Smart contract security patterns (ReentrancyGuard, Ownable, AccessControl, Pausable)
+- Solidity language semantics and EVM execution model
+- Checks-Effects-Interactions (CEI) pattern
+- OpenZeppelin standard implementations and their security guarantees
+- Proxy and delegatecall patterns, storage layout
+- Arithmetic safety (SafeMath, Solidity 0.8+ checked arithmetic, unchecked{} blocks)
+- ERC standard compliance and edge cases
 
 BEHAVIORAL GUIDELINES:
-1. Be objective - acknowledge valid vulnerabilities while defending against false positives
-2. Be thorough - examine the full context, not just the flagged code
-3. Look for mitigations - check for guards, modifiers, and protective patterns
-4. Consider the design intent - understand what the code is meant to do
-5. Don't be defensive blindly - if a vulnerability is real, acknowledge it
+1. Evaluate claims on technical merit — if the Attacker is right, acknowledge it
+2. Examine full context — a modifier elsewhere may fully prevent the attack, but verify it applies to this specific function and call path
+3. Distinguish between mitigations that FULLY prevent the attack versus those that only PARTIALLY reduce it
+4. Do not defend by asserting general code quality — show the specific mechanism that blocks the exploit path
 
-DEFENSE STRATEGIES:
-1. Identify existing mitigations (modifiers, checks, guards)
-2. Explain design decisions that prevent the attack
-3. Show why the attack scenario is unrealistic
-4. Point out context that invalidates the claim
-5. Clarify misunderstandings about code behavior
+WHEN EVALUATING A CLAIM:
+- Does the cited modifier or guard actually apply to this function? A nonReentrant on one function does not protect a different one.
+- Does the code follow Checks-Effects-Interactions? State changes after external calls are a red flag even with guards.
+- Does the Solidity version provide implicit protection (0.8+ overflow checks), or are unchecked{} blocks used?
+- Are external contracts trusted, or could a malicious contract trigger this path?"""
 
-CRITICAL: You MUST always respond with valid JSON. No text outside the JSON object."""
-
-DEFENSE_PROMPT_TEMPLATE = """Review the following vulnerability claim made by the Attacker.
+DEFENSE_PROMPT_TEMPLATE = """Review the following vulnerability claim.
 
 CONTRACT CODE:
 ```
@@ -48,30 +45,26 @@ VULNERABILITY CLAIM:
 - Evidence: {evidence}
 - Attacker's Confidence: {attacker_confidence}
 
-Your task is to critically evaluate this claim:
+Evaluate this claim with technical rigor. Address each of the following:
 
-1. Is this vulnerability claim valid?
-2. Are there existing mitigations in the code?
-3. Is the severity assessment accurate?
-4. Are there context factors that invalidate the claim?
-
-Consider:
-- Does the code have reentrancy guards?
-- Are there access control modifiers?
-- Is SafeMath or Solidity 0.8+ used?
-- Are external calls properly handled?
-- Does the business logic prevent exploitation?
+1. Is the vulnerable code pattern actually present in the cited location?
+2. Is there a mitigation that specifically blocks this exact attack path? Name it and quote where it appears.
+3. Does the Solidity version affect this? (0.8+ has overflow protection by default; unchecked{{}} blocks remove it.)
+4. Does the code follow Checks-Effects-Interactions? Are state changes made before or after external calls?
+5. Is the severity claim accurate given any mitigations present?
 
 Respond with ONLY this JSON structure:
 
 {{
   "verdict": "VALID_VULNERABILITY or INVALID_CLAIM or PARTIALLY_MITIGATED",
-  "defense": "Your detailed argument explaining why the claim is valid or invalid",
-  "evidence": "Quote specific code that supports your argument",
-  "mitigations_found": ["List of existing protections you identified"],
-  "recommended_severity": "critical|high|medium|low|info|none",
-  "confidence": 0.8
-}}"""
+  "defense": "Your specific technical argument — cite the exact code that prevents or enables the attack",
+  "evidence": "Quote the specific lines that support your verdict",
+  "mitigations_found": ["Each specific protection found, with its location in the code"],
+  "recommended_severity": "critical|high|medium|low|none",
+  "confidence": 0.85
+}}
+
+Use PARTIALLY_MITIGATED when a protection reduces but does not fully eliminate the attack surface. In that case, explain what attack surface remains."""
 
 REBUTTAL_RESPONSE_PROMPT_TEMPLATE = """The Attacker has provided a rebuttal to your defense.
 
@@ -86,16 +79,17 @@ YOUR ORIGINAL DEFENSE:
 ATTACKER'S REBUTTAL:
 {rebuttal}
 
-Analyze the rebuttal and respond:
-1. If the Attacker raises valid new evidence, ACKNOWLEDGE the vulnerability
-2. If your defense still holds, MAINTAIN your position with clarification
+Engage with the Attacker's new arguments directly. Do not repeat points already made.
+
+- If the Attacker identified a flaw in your mitigation (e.g., the guard doesn't apply to this specific call path), either acknowledge the vulnerability or provide a more precise rebuttal with code evidence.
+- If your original defense still holds, explain specifically why the Attacker's new argument is incorrect.
 
 Respond with ONLY this JSON structure:
 
 {{
   "verdict": "ACKNOWLEDGE_VULNERABILITY or MAINTAIN_DEFENSE",
-  "reasoning": "Your detailed analysis of the rebuttal and why you maintain or change your position",
-  "final_assessment": "Your final opinion on the validity of this claim",
+  "reasoning": "Your direct response to the new arguments the Attacker raised — not a restatement of prior points",
+  "final_assessment": "Your current technical conclusion on whether this vulnerability exists",
   "confidence": 0.8
 }}"""
 
@@ -109,12 +103,12 @@ VULNERABILITY CLAIM:
 JUDGE'S QUESTION:
 {judge_question}
 
-Provide a focused, specific answer to the Judge's question. Be precise and reference the actual code.
+Provide a focused, specific answer to the Judge's question. Reference the actual code directly.
 
 Respond with ONLY this JSON structure:
 
 {{
-  "answer": "Your focused answer to the Judge's specific question",
-  "supporting_evidence": "Code references or technical details that support your answer",
+  "answer": "Your precise answer to the Judge's specific question, with code references",
+  "supporting_evidence": "The specific code lines or mechanisms that support your answer",
   "confidence": 0.8
 }}"""

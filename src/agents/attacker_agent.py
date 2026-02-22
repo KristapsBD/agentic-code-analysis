@@ -108,6 +108,7 @@ class AttackerAgent(BaseAgent):
             vulnerability_type=claim.get("vulnerability_type", "Unknown"),
             location=claim.get("location", "Unknown"),
             description=claim.get("description", "No description"),
+            evidence=claim.get("evidence", ""),
             defense_argument=defense,
         )
 
