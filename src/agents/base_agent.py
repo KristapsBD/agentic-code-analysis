@@ -90,11 +90,13 @@ class BaseAgent(ABC):
         name: str,
         role: AgentRole,
         system_prompt: str,
+        web_search: bool = False,
     ):
         self.provider = provider
         self.name = name
         self.role = role
         self.system_prompt = system_prompt
+        self.web_search = web_search
         self.conversation_history: list[Message] = []
 
     @abstractmethod
@@ -124,7 +126,9 @@ class BaseAgent(ABC):
 
         messages.append(Message(role="user", content=user_message))
 
-        response = await self.provider.complete(messages, temperature=temperature)
+        response = await self.provider.complete(
+            messages, temperature=temperature, web_search=self.web_search
+        )
 
         # Store in history
         self.conversation_history.append(Message(role="user", content=user_message))
@@ -144,6 +148,8 @@ class BaseAgent(ABC):
         Appends a JSON instruction to the user message and attempts
         to extract a valid JSON object from the response. Falls back
         to wrapping the raw content if parsing fails.
+
+        Web search is controlled by self.web_search (set at agent construction).
 
         Args:
             user_message: The message to send

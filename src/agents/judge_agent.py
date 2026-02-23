@@ -63,18 +63,20 @@ class JudgeAgent(BaseAgent):
     a final verdict.
     """
 
-    def __init__(self, provider: BaseLLMProvider):
+    def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
         """
         Initialize the Judge Agent.
 
         Args:
             provider: LLM provider for generating responses
+            web_search: Whether to enable built-in web search on every LLM call
         """
         super().__init__(
             provider=provider,
             name="Judge",
             role=AgentRole.JUDGE,
             system_prompt=JUDGE_SYSTEM_PROMPT,
+            web_search=web_search,
         )
 
     async def analyze(self, context: dict) -> AgentResponse:

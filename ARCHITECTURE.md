@@ -112,6 +112,7 @@ python -m src.main analyze contracts/Token.sol --provider anthropic --rounds 2
 | `--rounds` | `2` | Maximum debate rounds per claim (1–5) |
 | `--output` | none | Custom path for JSON output (auto-saves to `data/results/` regardless) |
 | `--verbose` | off | Print each debate turn to console as it runs |
+| `--web-search` | off | Enable built-in web search for all agents (Anthropic + Gemini only) |
 
 **Output:** Always saves two files to `data/results/`:
 - `<contract_name>_<timestamp>.json` — full structured result
@@ -150,8 +151,8 @@ settings = Settings()  # populated from env vars at import time
 | Gemini API key | `GEMINI_API_KEY` | — |
 | Default provider | `DEFAULT_PROVIDER` | `openai` |
 | OpenAI model | `DEFAULT_MODEL_OPENAI` | `gpt-4o` |
-| Anthropic model | `DEFAULT_MODEL_ANTHROPIC` | `claude-3-5-sonnet-20241022` |
-| Gemini model | `DEFAULT_MODEL_GEMINI` | `gemini-2.0-flash-exp` |
+| Anthropic model | `DEFAULT_MODEL_ANTHROPIC` | `claude-sonnet-4-6` |
+| Gemini model | `DEFAULT_MODEL_GEMINI` | `gemini-2.5-flash` |
 | Debate rounds | `DEFAULT_DEBATE_ROUNDS` | `2` |
 | Temperature | `DEFAULT_TEMPERATURE` | `0.7` |
 | Judge threshold | `JUDGE_CONFIDENCE_THRESHOLD` | `0.7` |
@@ -313,6 +314,16 @@ The Judge's response also carries two flags used by the orchestrator:
 #### `DebateManager`
 
 The central controller. It owns the three agent instances and drives the full pipeline for a given contract.
+
+**Constructor parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `provider` | — | Shared `BaseLLMProvider` for all three agents |
+| `max_rounds` | `2` | Maximum debate rounds per claim |
+| `judge_confidence_threshold` | `0.7` | Confidence below which the Judge requests clarification |
+| `verbose` | `False` | Print each turn to console |
+| `web_search` | `False` | Enable built-in web search on every agent LLM call (Anthropic + Gemini only) |
 
 **Convergence detection** — before each new debate round, `_has_converged()` checks:
 - `attacker_confidence < 0.4` (Attacker is losing confidence → likely concession)
@@ -666,3 +677,12 @@ This dual gate prevents the Judge from requesting unnecessary clarification on c
 
 ### Defender's verdict does not directly determine the final outcome
 The Defender can return `VALID_VULNERABILITY` in its initial review, but this does not bypass the debate rounds or the Judge. The Defender's verdict is informational — the Judge always renders the binding decision.
+
+### Web search is a run-level flag, not a per-call decision
+The `web_search` flag is set once on `DebateManager` and propagated to all three agents at construction time via `self.web_search` on `BaseAgent`. This means every LLM call across the entire debate — initial scan, rebuttals, clarifications, verdicts — either all have web search enabled or none do. A finer-grained approach (e.g. only the Attacker searches) was not implemented as the added complexity was not justified.
+
+When `web_search=True`, the model itself decides whether to actually execute a search on each call — neither provider fires a search on every request. Anthropic uses `web_search_20260209` (requires `claude-sonnet-4-6` or newer); Gemini uses Google Search grounding. OpenAI does not support this feature and silently ignores the flag.
+
+Web search is disabled by default to avoid unintended cost increases during benchmarking and development. Enable it via `--web-search` on the CLI or by passing `web_search=True` to `DebateManager`.
+
+> **TODO:** evaluate whether enabling web search by default improves recall on known CVEs, then consider flipping the default.

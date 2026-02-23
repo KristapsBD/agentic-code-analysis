@@ -30,18 +30,20 @@ class AttackerAgent(BaseAgent):
     over specificity (better to flag a false positive than miss a real bug).
     """
 
-    def __init__(self, provider: BaseLLMProvider):
+    def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
         """
         Initialize the Attacker Agent.
 
         Args:
             provider: LLM provider for generating responses
+            web_search: Whether to enable built-in web search on every LLM call
         """
         super().__init__(
             provider=provider,
             name="Attacker",
             role=AgentRole.ATTACKER,
             system_prompt=ATTACKER_SYSTEM_PROMPT,
+            web_search=web_search,
         )
 
     async def analyze(self, context: dict) -> AgentResponse:

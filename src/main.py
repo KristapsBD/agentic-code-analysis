@@ -79,6 +79,16 @@ def analyze(
         "-v",
         help="Enable verbose output",
     ),
+    web_search: bool = typer.Option(
+        False,
+        "--web-search",
+        "-w",
+        help=(
+            "Enable built-in web search for all agents "
+            "(Anthropic: web_search_20260209, Gemini: Google Search grounding). "
+            "No effect on OpenAI. Increases latency and cost."
+        ),
+    ),
 ) -> None:
     """
     Analyze a smart contract for vulnerabilities using adversarial debate.
@@ -95,12 +105,14 @@ def analyze(
         raise typer.Exit(code=1)
 
     logger.info(f"Starting analysis of contract: {contract_path}")
-    logger.info(f"Provider: {provider.value}, Rounds: {rounds}")
+    logger.info(f"Provider: {provider.value}, Rounds: {rounds}, Web Search: {web_search}")
     logger.debug(f"Verbose mode: {verbose}")
-    
+
     console.print(f"[cyan]Analyzing:[/cyan] {contract_path}")
     console.print(f"[cyan]Provider:[/cyan] {provider.value}")
     console.print(f"[cyan]Debate Rounds:[/cyan] {rounds}")
+    if web_search:
+        console.print(f"[cyan]Web Search:[/cyan] enabled")
     console.print()
 
     # Read the contract
@@ -109,7 +121,7 @@ def analyze(
     # Run the analysis
     with console.status("[bold green]Running adversarial analysis...") as status:
         result = asyncio.run(
-            _run_analysis(contract_code, str(contract_path), provider, rounds, verbose, status)
+            _run_analysis(contract_code, str(contract_path), provider, rounds, verbose, status, web_search)
         )
 
     # Generate and display report
@@ -155,6 +167,7 @@ async def _run_analysis(
     rounds: int,
     verbose: bool,
     status: "rich.status.Status",
+    web_search: bool = False,
 ) -> dict:
     """Run the adversarial analysis asynchronously."""
     logger.debug(f"Creating LLM provider: {provider.value}")
@@ -163,12 +176,13 @@ async def _run_analysis(
     logger.debug(f"Provider created: {llm_provider.provider_name}")
 
     # Create debate manager
-    logger.debug(f"Initializing DebateManager with {rounds} rounds")
+    logger.debug(f"Initializing DebateManager with {rounds} rounds, web_search={web_search}")
     debate_manager = DebateManager(
         provider=llm_provider,
         max_rounds=rounds,
         judge_confidence_threshold=settings.judge_confidence_threshold,
         verbose=verbose,
+        web_search=web_search,
     )
 
     # Run debate

@@ -171,6 +171,8 @@ class DebateManager:
         judge_confidence_threshold: float = 0.7,
         verbose: bool = False,
         console: Optional[Console] = None,
+        # TODO: enable web_search=True by default once cost impact is understood
+        web_search: bool = False,
     ):
         """
         Initialize the Debate Manager.
@@ -181,25 +183,31 @@ class DebateManager:
             judge_confidence_threshold: Confidence below which the Judge requests clarification
             verbose: Whether to print verbose output
             console: Rich console for output (optional)
+            web_search: When True, all three agents can search the web on every LLM
+                        call via the provider's built-in search tool (Google Search
+                        grounding for Gemini, web_search_20260209 for Anthropic).
+                        Has no effect on OpenAI. Disabled by default.
         """
         self.provider = provider
         self.max_rounds = max_rounds
         self.judge_confidence_threshold = judge_confidence_threshold
         self.verbose = verbose
+        self.web_search = web_search
         self.console = console or Console()
 
         logger.debug(
             f"Initializing DebateManager with provider={provider.provider_name}, "
-            f"max_rounds={max_rounds}, judge_threshold={judge_confidence_threshold}"
+            f"max_rounds={max_rounds}, judge_threshold={judge_confidence_threshold}, "
+            f"web_search={web_search}"
         )
 
-        # Initialize agents
+        # Initialize agents — propagate web_search flag to all three
         logger.debug("Creating Attacker Agent")
-        self.attacker = AttackerAgent(provider)
+        self.attacker = AttackerAgent(provider, web_search=web_search)
         logger.debug("Creating Defender Agent")
-        self.defender = DefenderAgent(provider)
+        self.defender = DefenderAgent(provider, web_search=web_search)
         logger.debug("Creating Judge Agent")
-        self.judge = JudgeAgent(provider)
+        self.judge = JudgeAgent(provider, web_search=web_search)
 
         logger.debug("DebateManager initialization complete")
 
@@ -283,6 +291,7 @@ class DebateManager:
         result.metadata["model"] = self.provider.model
         result.metadata["max_rounds"] = self.max_rounds
         result.metadata["judge_confidence_threshold"] = self.judge_confidence_threshold
+        result.metadata["web_search"] = self.web_search
 
         return result.to_dict()
 

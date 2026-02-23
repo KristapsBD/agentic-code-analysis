@@ -31,18 +31,20 @@ class DefenderAgent(BaseAgent):
     - Misunderstandings of the code's intent
     """
 
-    def __init__(self, provider: BaseLLMProvider):
+    def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
         """
         Initialize the Defender Agent.
 
         Args:
             provider: LLM provider for generating responses
+            web_search: Whether to enable built-in web search on every LLM call
         """
         super().__init__(
             provider=provider,
             name="Defender",
             role=AgentRole.DEFENDER,
             system_prompt=DEFENDER_SYSTEM_PROMPT,
+            web_search=web_search,
         )
 
     async def analyze(self, context: dict) -> AgentResponse:

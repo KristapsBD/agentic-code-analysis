@@ -3,6 +3,9 @@ OpenAI LLM provider implementation.
 
 Implements the BaseLLMProvider interface for OpenAI's API,
 supporting GPT-4 and other OpenAI models.
+
+Note: web_search=True is accepted but ignored — OpenAI does not expose
+a native server-side search tool in the chat completions API.
 """
 
 from typing import Optional
@@ -27,21 +30,11 @@ class OpenAIProvider(BaseLLMProvider):
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ):
-        """
-        Initialize the OpenAI provider.
-
-        Args:
-            api_key: OpenAI API key
-            model: Model to use (default: gpt-4o)
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens in response
-        """
         super().__init__(api_key, model, temperature, max_tokens)
         self.client = AsyncOpenAI(api_key=api_key)
 
     @property
     def provider_name(self) -> str:
-        """Return the provider name."""
         return "openai"
 
     async def complete(
@@ -49,24 +42,22 @@ class OpenAIProvider(BaseLLMProvider):
         messages: list[Message],
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        web_search: bool = False,
     ) -> LLMResponse:
         """
         Send messages to OpenAI and get a response.
 
         Args:
-            messages: List of messages in the conversation
-            temperature: Optional override for sampling temperature
-            max_tokens: Optional override for max tokens
-
-        Returns:
-            LLMResponse containing the model's response
+            messages: List of messages in the conversation.
+            temperature: Optional override for sampling temperature.
+            max_tokens: Optional override for max tokens.
+            web_search: Accepted for interface compatibility but not implemented
+                        for OpenAI — no native server-side search tool available.
         """
         self._validate_messages(messages)
 
-        # Convert messages to OpenAI format
         openai_messages = [msg.to_dict() for msg in messages]
 
-        # Make the API call
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=openai_messages,
@@ -74,7 +65,6 @@ class OpenAIProvider(BaseLLMProvider):
             max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
         )
 
-        # Extract response data
         choice = response.choices[0]
         usage = response.usage
 

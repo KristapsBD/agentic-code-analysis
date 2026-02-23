@@ -67,3 +67,6 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests that make real API calls (deselect with '-m not integration')",
+]

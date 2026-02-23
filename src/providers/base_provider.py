@@ -55,15 +55,6 @@ class BaseLLMProvider(ABC):
         temperature: float = 0.7,
         max_tokens: int = 4096,
     ):
-        """
-        Initialize the LLM provider.
-
-        Args:
-            api_key: API key for the provider
-            model: Model identifier to use
-            temperature: Sampling temperature (0.0 to 2.0)
-            max_tokens: Maximum tokens in response
-        """
         self.api_key = api_key
         self.model = model
         self.temperature = temperature
@@ -81,17 +72,22 @@ class BaseLLMProvider(ABC):
         messages: list[Message],
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        web_search: bool = False,
     ) -> LLMResponse:
         """
         Send messages to the LLM and get a response.
 
         Args:
-            messages: List of messages in the conversation
-            temperature: Optional override for sampling temperature
-            max_tokens: Optional override for max tokens
+            messages: List of messages in the conversation.
+            temperature: Optional override for sampling temperature.
+            max_tokens: Optional override for max tokens.
+            web_search: When True, enable the provider's built-in web search.
+                        Anthropic uses web_search_20250305; Gemini uses Google
+                        Search grounding. Both are executed server-side with no
+                        client-side round-trips required.
 
         Returns:
-            LLMResponse containing the model's response
+            LLMResponse containing the model's response.
         """
         pass
 
@@ -100,24 +96,14 @@ class BaseLLMProvider(ABC):
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
+        web_search: bool = False,
     ) -> str:
-        """
-        Simple completion with just a prompt.
-
-        Args:
-            prompt: The user prompt
-            system_prompt: Optional system prompt
-            temperature: Optional override for sampling temperature
-
-        Returns:
-            The content of the model's response
-        """
+        """Simple single-turn completion."""
         messages = []
         if system_prompt:
             messages.append(Message(role="system", content=system_prompt))
         messages.append(Message(role="user", content=prompt))
-
-        response = await self.complete(messages, temperature=temperature)
+        response = await self.complete(messages, temperature=temperature, web_search=web_search)
         return response.content
 
     def _validate_messages(self, messages: list[Message]) -> None:

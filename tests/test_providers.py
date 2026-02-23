@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from src.providers.base_provider import BaseLLMProvider, LLMResponse, Message
 from src.providers.openai_provider import OpenAIProvider
 from src.providers.anthropic_provider import AnthropicProvider
+from src.providers.gemini_provider import GeminiProvider
 from src.providers.provider_factory import ProviderFactory
 from src.config import LLMProvider
 
@@ -139,8 +140,12 @@ class TestAnthropicProvider:
     @pytest.mark.asyncio
     async def test_complete(self, provider):
         """Test completion with mocked API."""
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "Test response"
+
         mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Test response")]
+        mock_response.content = [mock_block]
         mock_response.model = "claude-3-5-sonnet-20241022"
         mock_response.usage = MagicMock(input_tokens=50, output_tokens=50)
         mock_response.stop_reason = "end_turn"
@@ -187,3 +192,156 @@ class TestProviderFactory:
 
         with pytest.raises(ValueError, match="API key"):
             ProviderFactory.create(LLMProvider.OPENAI)
+
+
+# ---------------------------------------------------------------------------
+# Web search tests
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicWebSearch:
+    """Tests for Anthropic provider built-in web search."""
+
+    @pytest.fixture
+    def provider(self):
+        return AnthropicProvider(api_key="test-key", model="claude-3-5-sonnet-20241022")
+
+    @pytest.mark.asyncio
+    async def test_web_search_adds_tool_to_request(self, provider):
+        """When web_search=True, the web_search tool is included in the API call."""
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "Here is the answer."
+
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.model = "claude-3-5-sonnet-20241022"
+        mock_response.usage = MagicMock(input_tokens=20, output_tokens=10)
+        mock_response.stop_reason = "end_turn"
+        mock_response.model_dump = MagicMock(return_value={})
+        provider.client.messages.create = AsyncMock(return_value=mock_response)
+
+        await provider.complete(
+            [Message(role="user", content="What is the latest ETH price?")],
+            web_search=True,
+        )
+
+        call_kwargs = provider.client.messages.create.call_args.kwargs
+        assert "tools" in call_kwargs
+        assert any(
+            t.get("type") == "web_search_20260209" and t.get("name") == "web_search"
+            for t in call_kwargs["tools"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_web_search_by_default(self, provider):
+        """By default, no tools are passed to the API."""
+        mock_block = MagicMock()
+        mock_block.type = "text"
+        mock_block.text = "Answer."
+
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+        mock_response.model = "claude-3-5-sonnet-20241022"
+        mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
+        mock_response.stop_reason = "end_turn"
+        mock_response.model_dump = MagicMock(return_value={})
+        provider.client.messages.create = AsyncMock(return_value=mock_response)
+
+        await provider.complete([Message(role="user", content="Hello")])
+
+        call_kwargs = provider.client.messages.create.call_args.kwargs
+        assert "tools" not in call_kwargs
+
+
+class TestGeminiWebSearch:
+    """Tests for Gemini provider built-in Google Search grounding."""
+
+    @pytest.fixture
+    def provider(self):
+        with patch("src.providers.gemini_provider.genai.Client"):
+            return GeminiProvider(api_key="test-key", model="gemini-2.5-flash")
+
+    def test_build_contents_system_extracted(self, provider):
+        """System message becomes system_instruction, not a Content entry."""
+        system_instr, contents = provider._build_contents([
+            Message(role="system", content="You are a security auditor."),
+            Message(role="user", content="Analyse this contract."),
+        ])
+        assert system_instr == "You are a security auditor."
+        assert len(contents) == 1
+        assert contents[0].role == "user"
+
+    def test_build_contents_multi_turn(self, provider):
+        """User and assistant messages are converted to correct Content roles."""
+        _, contents = provider._build_contents([
+            Message(role="user", content="Hello"),
+            Message(role="assistant", content="Hi there"),
+            Message(role="user", content="Question?"),
+        ])
+        assert len(contents) == 3
+        assert contents[0].role == "user"
+        assert contents[1].role == "model"
+        assert contents[2].role == "user"
+
+    @pytest.mark.asyncio
+    async def test_web_search_adds_google_search_tool(self, provider):
+        """When web_search=True, GoogleSearch grounding is added to the config."""
+        from google.genai import types
+
+        mock_response = MagicMock()
+        mock_response.candidates = [
+            MagicMock(content=MagicMock(parts=[MagicMock(text="Answer", spec=["text"])]))
+        ]
+        mock_response.usage_metadata = MagicMock(
+            prompt_token_count=10,
+            candidates_token_count=5,
+            total_token_count=15,
+        )
+
+        captured_config = {}
+
+        async def fake_generate(model, contents, config):
+            captured_config["config"] = config
+            return mock_response
+
+        provider.client.aio.models.generate_content = fake_generate
+
+        await provider.complete(
+            [Message(role="user", content="Latest Solidity version?")],
+            web_search=True,
+        )
+
+        config = captured_config["config"]
+        assert config.tools is not None
+        assert any(
+            isinstance(t, types.Tool) and t.google_search is not None
+            for t in config.tools
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_web_search_by_default(self, provider):
+        """By default, no tools (no Google Search) are included in the config."""
+        mock_response = MagicMock()
+        mock_response.candidates = [
+            MagicMock(content=MagicMock(parts=[MagicMock(text="Answer", spec=["text"])]))
+        ]
+        mock_response.usage_metadata = MagicMock(
+            prompt_token_count=10,
+            candidates_token_count=5,
+            total_token_count=15,
+        )
+
+        captured_config = {}
+
+        async def fake_generate(model, contents, config):
+            captured_config["config"] = config
+            return mock_response
+
+        provider.client.aio.models.generate_content = fake_generate
+
+        await provider.complete([Message(role="user", content="Hello")])
+
+        config = captured_config["config"]
+        # tools should be absent or None when web_search is not requested
+        assert not config.tools
