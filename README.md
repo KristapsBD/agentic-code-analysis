@@ -102,7 +102,6 @@ agentic-code-analysis/
 │   ├── providers/       # LLM provider abstraction (OpenAI, Anthropic)
 │   ├── orchestration/   # Debate management and conversation flow
 │   ├── knowledge/       # Vulnerability database and prompt templates
-│   ├── parsers/         # Smart contract parsing
 │   └── output/          # Report generation and evaluation
 ├── data/
 │   ├── benchmarks/      # Vulnerability datasets

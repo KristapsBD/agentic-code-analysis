@@ -16,6 +16,7 @@ Pipeline flow:
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
@@ -27,7 +28,6 @@ from src.agents.base_agent import VulnerabilityClaim
 from src.agents.defender_agent import DefenderAgent
 from src.agents.judge_agent import JudgeAgent, Verdict
 from src.orchestration.conversation import Conversation, TurnType
-from src.parsers.language_detector import LanguageDetector
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,31 @@ logger = logging.getLogger(__name__)
 # Convergence thresholds for early exit
 ATTACKER_CONCEDE_THRESHOLD = 0.4  # Attacker confidence below this -> likely concession
 DEFENDER_SAFE_THRESHOLD = 0.8  # Defender confidence above this -> strong defense
+
+_EXTENSION_MAP = {
+    ".sol": "solidity",
+    ".vy": "vyper",
+    ".rs": "rust",
+    ".move": "move",
+}
+
+_LANGUAGE_PATTERNS: dict[str, list[str]] = {
+    "solidity": [r"pragma\s+solidity", r"contract\s+\w+", r"modifier\s+\w+", r"mapping\s*\(", r"msg\.sender"],
+    "vyper": [r"@external", r"@internal", r"@view", r"@payable", r"#\s*@version", r"from\s+vyper"],
+    "rust": [r"#\[program\]", r"#\[account\]", r"use\s+anchor_lang", r"use\s+solana_program", r"pub\s+fn\s+"],
+    "move": [r"module\s+\w+", r"script\s*\{", r"fun\s+\w+", r"acquires\s+", r"borrow_global"],
+}
+
+
+def _detect_language(source_code: str, file_path: str = "") -> str:
+    """Detect smart contract language from file extension or content patterns."""
+    for ext, lang in _EXTENSION_MAP.items():
+        if file_path.lower().endswith(ext):
+            return lang
+    scores = {lang: sum(1 for p in patterns if re.search(p, source_code, re.IGNORECASE))
+              for lang, patterns in _LANGUAGE_PATTERNS.items()}
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "unknown"
 
 
 @dataclass
@@ -176,8 +201,6 @@ class DebateManager:
         logger.debug("Creating Judge Agent")
         self.judge = JudgeAgent(provider)
 
-        # Language detector
-        self.language_detector = LanguageDetector()
         logger.debug("DebateManager initialization complete")
 
     async def run_debate(
@@ -196,7 +219,7 @@ class DebateManager:
             Dictionary containing the complete analysis results
         """
         # Initialize result tracking
-        detected_language = self.language_detector.detect(contract_code, contract_path)
+        detected_language = _detect_language(contract_code, contract_path)
         logger.info(f"Detected contract language: {detected_language}")
 
         result = DebateResult(

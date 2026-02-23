@@ -37,11 +37,6 @@ agentic-code-analysis/
 │   │       ├── defender.py
 │   │       └── judge.py
 │   │
-│   ├── parsers/                  # Smart contract parsing
-│   │   ├── base_parser.py       # Parser interface
-│   │   ├── solidity_parser.py   # Solidity parser
-│   │   └── language_detector.py # Language detection
-│   │
 │   └── output/                   # Results & evaluation
 │       ├── report.py            # Report generation
 │       └── evaluator.py         # Benchmark evaluation
@@ -49,8 +44,7 @@ agentic-code-analysis/
 ├── tests/                        # Test suite
 │   ├── test_agents.py
 │   ├── test_providers.py
-│   ├── test_debate.py
-│   └── test_parsers.py
+│   └── test_debate.py
 │
 ├── data/                         # Data directory
 │   ├── benchmarks/              # Test contracts
@@ -166,30 +160,7 @@ Contains vulnerability intelligence:
 - Templates for different analysis scenarios
 - Include vulnerability knowledge and best practices
 
-### 5. Parser Layer (`src/parsers/`)
-
-Extracts structural information from smart contracts:
-
-#### **LanguageDetector** (`language_detector.py`)
-- Auto-detects contract language (Solidity, Vyper, Rust, Move)
-- Uses file extension and content patterns
-- Supports extensibility for new languages
-
-#### **SolidityParser** (`solidity_parser.py`)
-- Parses Solidity source code
-- Extracts:
-  - Contracts, interfaces, libraries
-  - Functions (visibility, modifiers, parameters)
-  - State variables
-  - Events and modifiers
-- Detects security features (ReentrancyGuard, SafeMath)
-
-#### **BaseParser** (`base_parser.py`)
-- Abstract interface for language-specific parsers
-- Defines `ParsedContract` data structure
-- Enables plugin architecture for new languages
-
-### 6. Output Layer (`src/output/`)
+### 5. Output Layer (`src/output/`)
 
 Handles results and evaluation:
 

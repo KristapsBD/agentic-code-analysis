@@ -71,9 +71,6 @@ agentic-analysis/
 │   │       ├── defender.py            # Defender system prompt + templates
 │   │       └── judge.py               # Judge system prompt + templates
 │   │
-│   ├── parsers/                       # Contract language detection
-│   │   └── language_detector.py       # Regex-based language identification
-│   │
 │   ├── providers/                     # LLM API wrappers
 │   │   ├── base_provider.py           # Abstract provider interface
 │   │   ├── openai_provider.py         # OpenAI (GPT-4o etc.)
@@ -88,7 +85,6 @@ agentic-analysis/
 ├── tests/
 │   ├── test_agents.py
 │   ├── test_debate.py
-│   ├── test_parsers.py
 │   └── test_providers.py
 │
 └── data/
@@ -430,7 +426,7 @@ main.py: analyze()
     │
     └── DebateManager.run_debate(contract_code, path)
         │
-        ├── LanguageDetector.detect(code, path)         # Regex-based language ID
+        ├── _detect_language(code, path)                # Regex-based language ID
         │
         ├── ── PHASE 1: INITIAL SCAN ──────────────────────────────────
         │   AttackerAgent.analyze({contract_code, path, language})
@@ -650,7 +646,7 @@ Convergence-based early exit and Attacker concession reduce this in practice.
 All three agents in a given run use the same LLM provider and model. The alternative — using different models for different agents — was not implemented. The `DebateManager` accepts one `BaseLLMProvider` instance shared by all agents.
 
 ### Raw contract code is sent without preprocessing
-The contract is read as plain text and embedded directly in prompts. There is no AST parsing, comment stripping, or chunking. This is correct: LLMs are trained on raw Solidity and perform better on it than on extracted summaries. A `LanguageDetector` identifies the language by file extension and regex patterns, but produces only a label — it does not transform the code.
+The contract is read as plain text and embedded directly in prompts. There is no AST parsing, comment stripping, or chunking. This is correct: LLMs are trained on raw Solidity and perform better on it than on extracted summaries. A `_detect_language()` helper in `debate_manager.py` identifies the language by file extension and regex patterns, but produces only a label — it does not transform the code.
 
 ### Agents are stateless across claims, stateful within a claim
 `clear_history()` is called between every claim. Within a single claim's debate, the Attacker and Defender accumulate conversation history across rebuttal rounds (via `include_history=True`). The Judge is always stateless.
