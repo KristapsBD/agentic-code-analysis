@@ -1,34 +1,27 @@
 [
-  {
-    "contract_path": "BECToken.sol",
-    "vulnerabilities": [{"type": "arithmetic"}]
-  },
-  {
-    "contract_path": "parity_wallet_bug_2.sol",
-    "vulnerabilities": [{"type": "access_control"}]
-  },
-  {
-    "contract_path": "rubixi.sol",
-    "vulnerabilities": [{"type": "access_control"}]
-  },
-  {
-    "contract_path": "spank_chain_payment.sol",
-    "vulnerabilities": [{"type": "reentrancy"}]
-  },
-  {
-    "contract_path": "ERC20.sol",
-    "vulnerabilities": []
-  },
-  {
-    "contract_path": "ERC721A.sol",
-    "vulnerabilities": []
-  },
-  {
-    "contract_path": "ERC1155.sol",
-    "vulnerabilities": []
-  },
-  {
-    "contract_path": "ERC6909.sol",
-    "vulnerabilities": []
-  }
+  {"contract_path": "reentrancy_dao.sol",        "vulnerabilities": [{"type": "reentrancy"}]},
+  {"contract_path": "reentrance.sol",            "vulnerabilities": [{"type": "reentrancy"}]},
+  {"contract_path": "etherbank.sol",             "vulnerabilities": [{"type": "reentrancy"}]},
+  {"contract_path": "FibonacciBalance.sol",      "vulnerabilities": [{"type": "access_control"}]},
+  {"contract_path": "multiowned_vulnerable.sol", "vulnerabilities": [{"type": "access_control"}]},
+  {"contract_path": "phishable.sol",             "vulnerabilities": [{"type": "access_control"}]},
+  {"contract_path": "BECToken.sol",              "vulnerabilities": [{"type": "arithmetic"}]},
+  {"contract_path": "integer_overflow_add.sol",  "vulnerabilities": [{"type": "arithmetic"}]},
+  {"contract_path": "overflow_simple_add.sol",   "vulnerabilities": [{"type": "arithmetic"}]},
+  {"contract_path": "lotto.sol",                 "vulnerabilities": [{"type": "unchecked_calls"}]},
+  {"contract_path": "unchecked_return_value.sol","vulnerabilities": [{"type": "unchecked_calls"}]},
+  {"contract_path": "mishandled.sol",            "vulnerabilities": [{"type": "unchecked_calls"}]},
+  {"contract_path": "auction.sol",               "vulnerabilities": [{"type": "denial_of_service"}]},
+  {"contract_path": "dos_number.sol",            "vulnerabilities": [{"type": "denial_of_service"}]},
+  {"contract_path": "dos_simple.sol",            "vulnerabilities": [{"type": "denial_of_service"}]},
+  {"contract_path": "UniswapV2ERC20.sol",        "vulnerabilities": []},
+  {"contract_path": "UniswapV2Factory.sol",      "vulnerabilities": []},
+  {"contract_path": "PoolAddress.sol",           "vulnerabilities": []},
+  {"contract_path": "TickMath.sol",              "vulnerabilities": []},
+  {"contract_path": "FullMath.sol",              "vulnerabilities": []},
+  {"contract_path": "ExponentialNoError.sol",    "vulnerabilities": []},
+  {"contract_path": "JumpRateModelV2.sol",       "vulnerabilities": []},
+  {"contract_path": "WadRayMath.sol",            "vulnerabilities": []},
+  {"contract_path": "PercentageMath.sol",        "vulnerabilities": []},
+  {"contract_path": "ReserveConfiguration.sol",  "vulnerabilities": []}
 ]
