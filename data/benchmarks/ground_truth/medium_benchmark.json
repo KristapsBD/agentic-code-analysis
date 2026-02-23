@@ -1,0 +1,34 @@
+[
+  {
+    "contract_path": "BECToken.sol",
+    "vulnerabilities": [{"type": "arithmetic"}]
+  },
+  {
+    "contract_path": "parity_wallet_bug_2.sol",
+    "vulnerabilities": [{"type": "access_control"}]
+  },
+  {
+    "contract_path": "rubixi.sol",
+    "vulnerabilities": [{"type": "access_control"}]
+  },
+  {
+    "contract_path": "spank_chain_payment.sol",
+    "vulnerabilities": [{"type": "reentrancy"}]
+  },
+  {
+    "contract_path": "ERC20.sol",
+    "vulnerabilities": []
+  },
+  {
+    "contract_path": "ERC721A.sol",
+    "vulnerabilities": []
+  },
+  {
+    "contract_path": "ERC1155.sol",
+    "vulnerabilities": []
+  },
+  {
+    "contract_path": "ERC6909.sol",
+    "vulnerabilities": []
+  }
+]

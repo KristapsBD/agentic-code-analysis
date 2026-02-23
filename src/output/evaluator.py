@@ -15,6 +15,7 @@ from typing import Any, Optional
 from rich.console import Console
 from rich.table import Table
 
+from src.agents.baseline_agent import BaselineAgent
 from src.config import LLMProvider, settings
 from src.orchestration.debate_manager import DebateManager
 from src.providers.provider_factory import ProviderFactory
@@ -271,9 +272,10 @@ class Evaluator:
         for contract_path in contract_files:
             try:
                 contract_code = contract_path.read_text()
-                ground_truth = ground_truths.get(
-                    str(contract_path),
-                    GroundTruth(str(contract_path), [])
+                ground_truth = (
+                    ground_truths.get(str(contract_path))
+                    or ground_truths.get(contract_path.name)
+                    or GroundTruth(str(contract_path), [])
                 )
 
                 start_time = datetime.now()
@@ -420,6 +422,158 @@ class Evaluator:
                 return canonical
 
         return vuln_lower
+
+    async def evaluate_baseline(
+        self,
+        benchmark_dir: Path,
+        ground_truth_file: Optional[Path] = None,
+    ) -> BenchmarkResult:
+        """
+        Evaluate the single-prompt baseline against a benchmark dataset.
+
+        Uses one LLM call per contract (no debate) and accepts all findings
+        as confirmed vulnerabilities. Intended for comparison against
+        evaluate_benchmark().
+
+        Args:
+            benchmark_dir: Directory containing benchmark contracts
+            ground_truth_file: Optional JSON file with ground truth
+
+        Returns:
+            BenchmarkResult with evaluation metrics for the baseline
+        """
+        result = BenchmarkResult(
+            benchmark_name=f"{benchmark_dir.name}_baseline",
+            started_at=datetime.now(),
+            provider=self.provider.value,
+            model=settings.get_model_for_provider(self.provider),
+        )
+
+        ground_truths = self._load_ground_truth(benchmark_dir, ground_truth_file)
+        contract_files = self._find_contract_files(benchmark_dir)
+        result.total_contracts = len(contract_files)
+
+        llm_provider = ProviderFactory.create(self.provider)
+        baseline_agent = BaselineAgent(llm_provider)
+
+        for contract_path in contract_files:
+            try:
+                contract_code = contract_path.read_text()
+                ground_truth = (
+                    ground_truths.get(str(contract_path))
+                    or ground_truths.get(contract_path.name)
+                    or GroundTruth(str(contract_path), [])
+                )
+
+                start_time = datetime.now()
+                raw_vulns = await baseline_agent.scan(contract_code, str(contract_path))
+                analysis_time = (datetime.now() - start_time).total_seconds()
+
+                # Wrap raw findings into the format _compare_results() expects
+                analysis_result = {
+                    "claim_results": [
+                        {
+                            "verdict": {
+                                "is_valid": True,
+                                "severity": v.get("severity", "medium"),
+                            },
+                            "claim": {
+                                "vulnerability_type": v.get("type", ""),
+                                "location": v.get("location", ""),
+                            },
+                        }
+                        for v in raw_vulns
+                    ]
+                }
+
+                eval_result = self._compare_results(
+                    ground_truth=ground_truth,
+                    analysis_result=analysis_result,
+                    analysis_time=analysis_time,
+                )
+                result.contract_results.append(eval_result)
+                result.successful_analyses += 1
+
+            except Exception as e:
+                result.contract_results.append(EvaluationResult(
+                    contract_path=str(contract_path),
+                    ground_truth=GroundTruth(str(contract_path), []),
+                    predicted_vulnerabilities=[],
+                    error=str(e),
+                ))
+                result.failed_analyses += 1
+
+        result.completed_at = datetime.now()
+        return result
+
+    def print_comparison(
+        self,
+        multi: BenchmarkResult,
+        baseline: BenchmarkResult,
+        console: Optional[Console] = None,
+    ) -> None:
+        """
+        Print a side-by-side comparison of multi-agent vs baseline results.
+
+        Args:
+            multi: BenchmarkResult from the multi-agent pipeline
+            baseline: BenchmarkResult from the single-prompt baseline
+            console: Optional Rich Console instance
+        """
+        console = console or Console()
+
+        table = Table(
+            title="Multi-Agent vs. Baseline Comparison",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("Metric", style="cyan")
+        table.add_column("Multi-Agent", justify="right")
+        table.add_column("Baseline", justify="right")
+        table.add_column("Delta", justify="right")
+
+        def _delta(multi_val: float, base_val: float, higher_is_better: bool = True) -> str:
+            diff = multi_val - base_val
+            if diff == 0:
+                return "[white]0.00%[/white]"
+            better = (diff > 0) == higher_is_better
+            color = "green" if better else "red"
+            sign = "+" if diff > 0 else ""
+            return f"[{color}]{sign}{diff:.2%}[/{color}]"
+
+        def _int_delta(multi_val: int, base_val: int, higher_is_better: bool = True) -> str:
+            diff = multi_val - base_val
+            if diff == 0:
+                return "[white]0[/white]"
+            better = (diff > 0) == higher_is_better
+            color = "green" if better else "red"
+            sign = "+" if diff > 0 else ""
+            return f"[{color}]{sign}{diff}[/{color}]"
+
+        rows = [
+            ("Micro Precision", multi.micro_precision, baseline.micro_precision, True),
+            ("Micro Recall",    multi.micro_recall,    baseline.micro_recall,    True),
+            ("Micro F1",        multi.micro_f1,        baseline.micro_f1,        True),
+            ("Macro Precision", multi.macro_precision, baseline.macro_precision, True),
+            ("Macro Recall",    multi.macro_recall,    baseline.macro_recall,    True),
+            ("Macro F1",        multi.macro_f1,        baseline.macro_f1,        True),
+        ]
+
+        for label, mv, bv, higher in rows:
+            table.add_row(label, f"{mv:.2%}", f"{bv:.2%}", _delta(mv, bv, higher))
+
+        table.add_row("", "", "", "")
+
+        int_rows = [
+            ("True Positives",  multi.total_true_positives,  baseline.total_true_positives,  True),
+            ("False Positives", multi.total_false_positives, baseline.total_false_positives, False),
+            ("False Negatives", multi.total_false_negatives, baseline.total_false_negatives, False),
+        ]
+
+        for label, mv, bv, higher in int_rows:
+            table.add_row(label, str(mv), str(bv), _int_delta(mv, bv, higher))
+
+        console.print(table)
 
     def print_results(self, result: BenchmarkResult, console: Optional[Console] = None) -> None:
         """Print evaluation results to console."""

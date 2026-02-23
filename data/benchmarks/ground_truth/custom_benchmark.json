@@ -1,0 +1,18 @@
+[
+  {
+    "contract_path": "reentrancy_vulnerable.sol",
+    "vulnerabilities": [{"type": "reentrancy"}]
+  },
+  {
+    "contract_path": "access_control_vulnerable.sol",
+    "vulnerabilities": [{"type": "access_control"}]
+  },
+  {
+    "contract_path": "integer_overflow.sol",
+    "vulnerabilities": [{"type": "arithmetic"}]
+  },
+  {
+    "contract_path": "safe_contract.sol",
+    "vulnerabilities": []
+  }
+]

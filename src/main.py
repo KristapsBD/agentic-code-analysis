@@ -195,6 +195,12 @@ def evaluate(
         "-p",
         help="LLM provider to use",
     ),
+    ground_truth: Optional[Path] = typer.Option(
+        None,
+        "--ground-truth",
+        "-g",
+        help="JSON file with labeled ground truth vulnerabilities",
+    ),
     output: Path = typer.Option(
         Path("data/results/evaluation.json"),
         "--output",
@@ -226,12 +232,14 @@ def evaluate(
 
     console.print(f"[cyan]Benchmark Directory:[/cyan] {benchmark_dir}")
     console.print(f"[cyan]Provider:[/cyan] {provider.value}")
+    if ground_truth:
+        console.print(f"[cyan]Ground Truth:[/cyan] {ground_truth}")
     console.print()
 
     # Run evaluation
     with console.status("[bold green]Running evaluation..."):
         evaluator = Evaluator(provider=provider, max_rounds=rounds)
-        results = asyncio.run(evaluator.evaluate_benchmark(benchmark_dir))
+        results = asyncio.run(evaluator.evaluate_benchmark(benchmark_dir, ground_truth))
 
     # Display results
     evaluator.print_results(results, console)
@@ -240,6 +248,106 @@ def evaluate(
     output.parent.mkdir(parents=True, exist_ok=True)
     evaluator.save_results(results, output)
     console.print(f"\n[green]Results saved to:[/green] {output}")
+
+
+@app.command()
+def benchmark(
+    benchmark_dir: Path = typer.Argument(
+        ...,
+        help="Path to the benchmark directory containing smart contracts",
+        exists=True,
+        dir_okay=True,
+        file_okay=False,
+    ),
+    ground_truth: Optional[Path] = typer.Option(
+        None,
+        "--ground-truth",
+        "-g",
+        help="JSON file with labeled ground truth vulnerabilities (strongly recommended)",
+    ),
+    provider: LLMProvider = typer.Option(
+        settings.default_provider,
+        "--provider",
+        "-p",
+        help="LLM provider to use",
+    ),
+    rounds: int = typer.Option(
+        settings.default_debate_rounds,
+        "--rounds",
+        "-r",
+        help="Number of debate rounds for the multi-agent pipeline",
+        min=1,
+        max=5,
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file path for combined benchmark results (JSON)",
+    ),
+) -> None:
+    """
+    Compare multi-agent pipeline vs. single-prompt baseline on a benchmark dataset.
+
+    Runs both approaches on all contracts in the benchmark directory and
+    prints a side-by-side precision/recall/F1 comparison.
+    """
+    import json as _json
+
+    print_banner()
+
+    try:
+        settings.validate_provider_config(provider)
+    except ValueError as e:
+        console.print(f"[red]Configuration Error:[/red] {e}")
+        raise typer.Exit(code=1)
+
+    if not ground_truth:
+        console.print(
+            "[yellow]Warning:[/yellow] No --ground-truth file provided. "
+            "Metrics will use filename-inferred labels (SmartBugs format)."
+        )
+
+    console.print(f"[cyan]Benchmark Directory:[/cyan] {benchmark_dir}")
+    console.print(f"[cyan]Provider:[/cyan] {provider.value}")
+    console.print(f"[cyan]Debate Rounds:[/cyan] {rounds}")
+    console.print()
+
+    evaluator = Evaluator(provider=provider, max_rounds=rounds)
+
+    # Run multi-agent pipeline
+    console.print("[bold]Step 1/2:[/bold] Running multi-agent pipeline...")
+    with console.status("[bold green]Attacker → Defender → Judge debate in progress..."):
+        multi_result = asyncio.run(evaluator.evaluate_benchmark(benchmark_dir, ground_truth))
+
+    console.print()
+    console.print("[bold cyan]Multi-Agent Results:[/bold cyan]")
+    evaluator.print_results(multi_result, console)
+
+    # Run single-prompt baseline
+    console.print()
+    console.print("[bold]Step 2/2:[/bold] Running single-prompt baseline...")
+    with console.status("[bold green]Baseline scan in progress (one LLM call per contract)..."):
+        baseline_result = asyncio.run(evaluator.evaluate_baseline(benchmark_dir, ground_truth))
+
+    console.print()
+    console.print("[bold cyan]Baseline Results:[/bold cyan]")
+    evaluator.print_results(baseline_result, console)
+
+    # Print comparison
+    console.print()
+    evaluator.print_comparison(multi_result, baseline_result, console)
+
+    # Save combined output
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    output_path = output or Path(f"data/results/benchmark_{timestamp}.json")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    combined = {
+        "multi_agent": multi_result.to_dict(),
+        "baseline": baseline_result.to_dict(),
+    }
+    output_path.write_text(_json.dumps(combined, indent=2, default=str))
+    console.print(f"\n[green]Results saved to:[/green] {output_path}")
 
 
 @app.command()
