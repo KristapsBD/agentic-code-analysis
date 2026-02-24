@@ -1,9 +1,3 @@
-/*
- * @source: https://smartcontractsecurity.github.io/SWC-registry/docs/SWC-106#walletlibrarysol
- * @author: -
- * @vulnerable_at_lines: 226,233
- */
-
 //sol Wallet
 // Multi-sig, daily-limited account proxy/wallet.
 // @authors:

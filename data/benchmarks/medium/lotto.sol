@@ -1,10 +1,3 @@
-/*
- * @source: https://github.com/etherpot/contract/blob/master/app/contracts/lotto.sol
- * @author: -
- * @vulnerable_at_lines: 109,141
- */
-
-//added pragma version
 pragma solidity ^0.4.0;
 
  contract Lotto {
@@ -105,7 +98,6 @@ pragma solidity ^0.4.0;
          var winner = calculateWinner(roundIndex,subpotIndex);
          var subpot = getSubpot(roundIndex);
 
-         // <yes> <report> UNCHECKED_LL_CALLS
          winner.send(subpot);
 
          rounds[roundIndex].isCashed[subpotIndex] = true;
@@ -137,7 +129,6 @@ pragma solidity ^0.4.0;
          if(value==0) return;
 
          if(value<msg.value){
-             // <yes> <report> UNCHECKED_LL_CALLS
              msg.sender.send(msg.value-value);
          }
          //no partial tickets, send a partial refund

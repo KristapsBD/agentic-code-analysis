@@ -1,10 +1,3 @@
-/*
- * @source: https://github.com/trailofbits/not-so-smart-contracts/blob/master/wrong_constructor_name/Rubixi_source_code/Rubixi.sol
- * @author: -
-* @vulnerable_at_lines: 23,24
- */
-
- // 0xe82719202e5965Cf5D9B6673B7503a3b92DE20be#code
  pragma solidity ^0.4.15;
 
  contract Rubixi {
@@ -19,7 +12,6 @@
          address private creator;
 
          //Sets creator
-         // <yes> <report> ACCESS_CONTROL
          function DynamicPyramid() {
                  creator = msg.sender; //anyone can call this
          }

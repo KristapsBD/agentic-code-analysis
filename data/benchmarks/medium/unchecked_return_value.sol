@@ -1,9 +1,3 @@
-/*
- * @source: etherscan.io 
- * @author: -
- * @vulnerable_at_lines: 44,97
- */
-
 pragma solidity ^0.4.18;
 
 contract Ownable
@@ -40,7 +34,6 @@ contract Token is Ownable
     public 
     onlyOwner
     {
-        // <yes> <report> UNCHECKED_LL_CALLS
         token.call(bytes4(sha3("transfer(address,uint256)")),to,amount); 
     }
 }
@@ -93,7 +86,6 @@ contract TokenBank is Token
         {
             if(Holders[_addr]>=_wei)
             {
-                // <yes> <report> UNCHECKED_LL_CALLS
                 _addr.call.value(_wei);
                 Holders[_addr]-=_wei;
             }

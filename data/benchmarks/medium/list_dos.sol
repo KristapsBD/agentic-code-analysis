@@ -35,9 +35,7 @@ contract Government {
              lastCreditorPayedOut = 0;
              lastTimeOfNewCredit = block.timestamp;
              profitFromCrash = 0;
-            // <yes> <report> DENIAL_OF_SERVICE
              creditorAddresses = new address[](0);
-            // <yes> <report> DENIAL_OF_SERVICE
              creditorAmounts = new uint[](0);
              round += 1;
              return false;
