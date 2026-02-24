@@ -254,7 +254,6 @@ contract PausableToken is StandardToken, Pausable {
 
   function batchTransfer(address[] _receivers, uint256 _value) public whenNotPaused returns (bool) {
     uint cnt = _receivers.length;
-    // <yes> <report> ARITHMETIC
     uint256 amount = uint256(cnt) * _value;
     require(cnt > 0 && cnt <= 20);
     require(_value > 0 && balances[msg.sender] >= amount);
