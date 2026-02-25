@@ -15,7 +15,6 @@ from typing import Any, Optional
 from rich.console import Console
 from rich.table import Table
 
-from src.agents.baseline_agent import BaselineAgent
 from src.config import LLMProvider, settings
 from src.orchestration.debate_manager import DebateManager
 from src.providers.provider_factory import ProviderFactory
@@ -423,38 +422,53 @@ class Evaluator:
 
         return vuln_lower
 
-    async def evaluate_baseline(
+    async def evaluate_both(
         self,
         benchmark_dir: Path,
         ground_truth_file: Optional[Path] = None,
-    ) -> BenchmarkResult:
+    ) -> tuple[BenchmarkResult, BenchmarkResult]:
         """
-        Evaluate the single-prompt baseline against a benchmark dataset.
+        Single-pass evaluation returning both multi-agent and attacker-only baseline results.
 
-        Uses one LLM call per contract (no debate) and accepts all findings
-        as confirmed vulnerabilities. Intended for comparison against
-        evaluate_benchmark().
+        Runs the full multi-agent debate once per contract, then derives baseline
+        metrics from the attacker's initial claims before any debate occurs. Both
+        pipelines therefore start from the identical LLM call, eliminating variance
+        from independent runs and halving the number of API calls.
 
         Args:
             benchmark_dir: Directory containing benchmark contracts
             ground_truth_file: Optional JSON file with ground truth
 
         Returns:
-            BenchmarkResult with evaluation metrics for the baseline
+            (multi_result, baseline_result) — both scored against the same ground truth
         """
-        result = BenchmarkResult(
+        model = settings.get_model_for_provider(self.provider)
+
+        multi_result = BenchmarkResult(
+            benchmark_name=benchmark_dir.name,
+            started_at=datetime.now(),
+            provider=self.provider.value,
+            model=model,
+        )
+        baseline_result = BenchmarkResult(
             benchmark_name=f"{benchmark_dir.name}_baseline",
             started_at=datetime.now(),
             provider=self.provider.value,
-            model=settings.get_model_for_provider(self.provider),
+            model=model,
         )
 
         ground_truths = self._load_ground_truth(benchmark_dir, ground_truth_file)
         contract_files = self._find_contract_files(benchmark_dir)
-        result.total_contracts = len(contract_files)
+        multi_result.total_contracts = len(contract_files)
+        baseline_result.total_contracts = len(contract_files)
 
         llm_provider = ProviderFactory.create(self.provider)
-        baseline_agent = BaselineAgent(llm_provider)
+        debate_manager = DebateManager(
+            provider=llm_provider,
+            max_rounds=self.max_rounds,
+            judge_confidence_threshold=settings.judge_confidence_threshold,
+            verbose=False,
+        )
 
         for contract_path in contract_files:
             try:
@@ -466,45 +480,58 @@ class Evaluator:
                 )
 
                 start_time = datetime.now()
-                raw_vulns = await baseline_agent.scan(contract_code, str(contract_path))
+                analysis_result = await debate_manager.run_debate(
+                    contract_code, str(contract_path)
+                )
                 analysis_time = (datetime.now() - start_time).total_seconds()
 
-                # Wrap raw findings into the format _compare_results() expects
-                analysis_result = {
-                    "claim_results": [
-                        {
-                            "verdict": {
-                                "is_valid": True,
-                                "severity": v.get("severity", "medium"),
-                            },
-                            "claim": {
-                                "vulnerability_type": v.get("type", ""),
-                                "location": v.get("location", ""),
-                            },
-                        }
-                        for v in raw_vulns
-                    ]
-                }
-
-                eval_result = self._compare_results(
+                # Multi-agent: only judge-confirmed claims count
+                multi_eval = self._compare_results(
                     ground_truth=ground_truth,
                     analysis_result=analysis_result,
                     analysis_time=analysis_time,
                 )
-                result.contract_results.append(eval_result)
-                result.successful_analyses += 1
+                multi_result.contract_results.append(multi_eval)
+                multi_result.successful_analyses += 1
+
+                # Baseline: attacker's initial claims accepted as-is (no debate filtering)
+                baseline_analysis = {
+                    "claim_results": [
+                        {
+                            "verdict": {"is_valid": True, "severity": c.get("severity", "medium")},
+                            "claim": {
+                                "vulnerability_type": c.get("vulnerability_type", ""),
+                                "location": c.get("location", ""),
+                            },
+                        }
+                        for c in analysis_result.get("initial_claims", [])
+                    ]
+                }
+                baseline_eval = self._compare_results(
+                    ground_truth=ground_truth,
+                    analysis_result=baseline_analysis,
+                    analysis_time=analysis_time,
+                )
+                baseline_result.contract_results.append(baseline_eval)
+                baseline_result.successful_analyses += 1
+
+                debate_manager.reset_agents()
 
             except Exception as e:
-                result.contract_results.append(EvaluationResult(
+                error_result = EvaluationResult(
                     contract_path=str(contract_path),
                     ground_truth=GroundTruth(str(contract_path), []),
                     predicted_vulnerabilities=[],
                     error=str(e),
-                ))
-                result.failed_analyses += 1
+                )
+                multi_result.contract_results.append(error_result)
+                multi_result.failed_analyses += 1
+                baseline_result.contract_results.append(error_result)
+                baseline_result.failed_analyses += 1
 
-        result.completed_at = datetime.now()
-        return result
+        multi_result.completed_at = datetime.now()
+        baseline_result.completed_at = datetime.now()
+        return multi_result, baseline_result
 
     def print_comparison(
         self,

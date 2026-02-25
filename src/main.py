@@ -329,23 +329,19 @@ def benchmark(
 
     evaluator = Evaluator(provider=provider, max_rounds=rounds)
 
-    # Run multi-agent pipeline
-    console.print("[bold]Step 1/2:[/bold] Running multi-agent pipeline...")
+    # Single pass — attacker's initial claims become the baseline, judge-filtered
+    # claims become the multi-agent result. Both start from the identical LLM call.
     with console.status("[bold green]Attacker → Defender → Judge debate in progress..."):
-        multi_result = asyncio.run(evaluator.evaluate_benchmark(benchmark_dir, ground_truth))
+        multi_result, baseline_result = asyncio.run(
+            evaluator.evaluate_both(benchmark_dir, ground_truth)
+        )
 
     console.print()
     console.print("[bold cyan]Multi-Agent Results:[/bold cyan]")
     evaluator.print_results(multi_result, console)
 
-    # Run single-prompt baseline
     console.print()
-    console.print("[bold]Step 2/2:[/bold] Running single-prompt baseline...")
-    with console.status("[bold green]Baseline scan in progress (one LLM call per contract)..."):
-        baseline_result = asyncio.run(evaluator.evaluate_baseline(benchmark_dir, ground_truth))
-
-    console.print()
-    console.print("[bold cyan]Baseline Results:[/bold cyan]")
+    console.print("[bold cyan]Baseline Results (attacker-only, no debate):[/bold cyan]")
     evaluator.print_results(baseline_result, console)
 
     # Print comparison
