@@ -22,9 +22,11 @@ from src.output.evaluator import Evaluator
 from src.output.report import ReportGenerator
 from src.providers.provider_factory import ProviderFactory
 
-# Setup logging
-setup_logging(settings.log_level)
+# Setup logging — returns a file path when DEBUG mode is active
+_debug_log_file = setup_logging(settings.log_level)
 logger = logging.getLogger(__name__)
+if _debug_log_file:
+    logger.debug(f"Full debug transcript → {_debug_log_file}")
 
 app = typer.Typer(
     name="sca",
@@ -113,6 +115,8 @@ def analyze(
     console.print(f"[cyan]Debate Rounds:[/cyan] {rounds}")
     if web_search:
         console.print(f"[cyan]Web Search:[/cyan] enabled")
+    if _debug_log_file:
+        console.print(f"[cyan]Debug log:[/cyan] {_debug_log_file}")
     console.print()
 
     # Read the contract
@@ -186,10 +190,13 @@ async def _run_analysis(
     )
 
     # Run debate
-    status.update("[bold green]Attacker scanning for vulnerabilities...")
+    status.update("[bold green]Agents scanning for vulnerabilities...")
     logger.info("Starting adversarial debate...")
     result = await debate_manager.run_debate(contract_code, contract_path)
-    logger.info(f"Debate complete - {len(result.get('vulnerabilities', []))} vulnerabilities found")
+    logger.info(
+        f"Debate complete - {result.get('confirmed_vulnerabilities', 0)} confirmed "
+        f"/ {result.get('total_vulnerabilities', 0)} total vulnerabilities"
+    )
 
     return result
 

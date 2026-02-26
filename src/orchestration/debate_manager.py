@@ -259,6 +259,20 @@ class DebateManager:
 
         result.initial_claims = attacker_response.claims
         logger.info(f"Attacker Agent found {len(result.initial_claims)} potential vulnerabilities")
+        if result.initial_claims:
+            for i, claim in enumerate(result.initial_claims):
+                logger.debug(
+                    f"  Claim {i+1}/{len(result.initial_claims)}: "
+                    f"[{claim.severity.upper()}] {claim.vulnerability_type} "
+                    f"@ {claim.location} (confidence={claim.confidence:.2f})"
+                )
+                logger.debug(f"    Description: {claim.description}")
+                logger.debug(f"    Evidence:    {claim.evidence[:300]}")
+        else:
+            logger.warning(
+                "Attacker found 0 claims — check debug logs for the raw LLM response "
+                "to diagnose whether the model responded correctly or JSON parsing failed"
+            )
 
         if self.verbose:
             self.console.print(
@@ -268,7 +282,10 @@ class DebateManager:
         # Phase 2-4: Debate each claim
         logger.info(f"Phase 2-4: Starting debate rounds for {len(result.initial_claims)} claims")
         for i, claim in enumerate(result.initial_claims):
-            logger.info(f"Debating claim {i+1}/{len(result.initial_claims)}: {claim.vulnerability_type}")
+            logger.info(
+                f"Debating claim {i+1}/{len(result.initial_claims)}: "
+                f"[{claim.severity.upper()}] {claim.vulnerability_type} @ {claim.location}"
+            )
             if self.verbose:
                 self.console.print(
                     f"\n[bold blue]Debating claim {i+1}/{len(result.initial_claims)}:[/bold blue] "
@@ -284,6 +301,12 @@ class DebateManager:
                 conversation=conversation,
             )
             result.claim_results.append(claim_result)
+            logger.info(
+                f"Claim {i+1} verdict: {'CONFIRMED' if claim_result.verdict.is_valid else 'REJECTED'} "
+                f"(judge_confidence={claim_result.verdict.confidence:.2f}, "
+                f"rounds={claim_result.debate_rounds}, "
+                f"attacker_conceded={claim_result.attacker_conceded})"
+            )
 
         # Finalize
         result.completed_at = datetime.now()

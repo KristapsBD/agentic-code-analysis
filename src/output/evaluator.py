@@ -202,16 +202,36 @@ class Evaluator:
     Supports various benchmark formats including SmartBugs.
     """
 
-    # Mapping of vulnerability type variations to canonical names
+    # Maps specific canonical types to broader parent categories used by some benchmarks
+    # (e.g. SmartBugs labels delegatecall storage-collision findings as "access_control").
+    # During evaluation a predicted type matches a ground-truth type if either:
+    #   - they normalise to the same canonical label, OR
+    #   - the predicted type's parent equals the ground-truth canonical label.
+    VULNERABILITY_PARENT_MAP: dict[str, str] = {
+        "delegatecall":        "access_control",  # storage-collision = unauthorised access bypass
+        "upgradeable_proxy":   "access_control",  # unprotected upgrade = unauthorised access
+        "signature_replay":    "access_control",  # replay bypasses authentication checks
+        "flash_loan":          "logic_error",     # flash-loan exploits exploit economic logic
+        "oracle_manipulation": "logic_error",     # price-oracle attacks exploit logic flaws
+    }
+
+    # Mapping of vulnerability type variations to canonical names.
+    # Canonical keys must match VULNERABILITY_TYPES in src/knowledge/prompts/attacker.py.
     VULNERABILITY_TYPE_MAP = {
         "reentrancy": ["reentrancy", "re-entrancy", "reentrant"],
-        "access_control": ["access_control", "access-control", "authorization", "unprotected"],
-        "arithmetic": ["arithmetic", "integer_overflow", "integer_underflow", "overflow", "underflow"],
-        "unchecked_calls": ["unchecked_call", "unchecked_return", "unchecked_low_level"],
-        "denial_of_service": ["dos", "denial_of_service", "denial-of-service"],
-        "front_running": ["front_running", "front-running", "frontrunning", "race_condition"],
-        "time_manipulation": ["time_manipulation", "timestamp", "block_timestamp"],
-        "bad_randomness": ["randomness", "bad_randomness", "weak_randomness"],
+        "access_control": ["access_control", "access-control", "authorization", "unprotected", "privilege"],
+        "arithmetic": ["arithmetic", "integer_overflow", "integer_underflow", "overflow", "underflow", "safeMath"],
+        "unchecked_calls": ["unchecked_call", "unchecked_return", "unchecked_low_level", "return_value"],
+        "denial_of_service": ["dos", "denial_of_service", "denial-of-service", "gas_griefing", "unbounded_loop"],
+        "front_running": ["front_running", "front-running", "frontrunning", "race_condition", "sandwich", "mev"],
+        "time_manipulation": ["time_manipulation", "timestamp", "block_timestamp", "block_number"],
+        "bad_randomness": ["randomness", "bad_randomness", "weak_randomness", "predictable_random"],
+        "signature_replay": ["signature_replay", "replay_attack", "missing_nonce", "malleab"],
+        "flash_loan": ["flash_loan", "flashloan", "flash-loan"],
+        "oracle_manipulation": ["oracle", "price_manipulation", "twap", "spot_price"],
+        "delegatecall": ["delegatecall", "delegate_call", "storage_collision", "proxy_collision"],
+        "upgradeable_proxy": ["upgradeable", "upgradable", "uninitialized_impl", "storage_layout"],
+        "logic_error": ["logic_error", "logic-error", "business_logic", "economic_exploit", "allowance_bug"],
     }
 
     def __init__(
@@ -379,28 +399,35 @@ class Evaluator:
                     "location": claim.get("location", ""),
                 })
 
+        predicted_types = {p["type"] for p in predicted}
+
+        ground_truth_types = {
+            self._normalize_vuln_type(gt.get("type", ""))
+            for gt in ground_truth.vulnerabilities
+        }
+
         # Calculate metrics
         true_positives = 0
         false_positives = 0
 
-        predicted_types = set()
-        for p in predicted:
-            predicted_types.add(p["type"])
-
-        ground_truth_types = set()
-        for gt in ground_truth.vulnerabilities:
-            gt_type = self._normalize_vuln_type(gt.get("type", ""))
-            ground_truth_types.add(gt_type)
-
-        # True positives: predicted types that exist in ground truth
+        # True positives: predicted types that match a GT type directly OR via parent.
+        # e.g. predicted "delegatecall" → parent "access_control" ∈ ground_truth_types → TP.
         for p_type in predicted_types:
-            if p_type in ground_truth_types:
+            parent = self.VULNERABILITY_PARENT_MAP.get(p_type)
+            if p_type in ground_truth_types or (parent and parent in ground_truth_types):
                 true_positives += 1
             else:
                 false_positives += 1
 
-        # False negatives: ground truth types not predicted
-        false_negatives = len(ground_truth_types - predicted_types)
+        # False negatives: GT types not covered by any predicted type.
+        false_negatives = 0
+        for gt_type in ground_truth_types:
+            matched = gt_type in predicted_types or any(
+                self.VULNERABILITY_PARENT_MAP.get(p) == gt_type
+                for p in predicted_types
+            )
+            if not matched:
+                false_negatives += 1
 
         return EvaluationResult(
             contract_path=ground_truth.contract_path,

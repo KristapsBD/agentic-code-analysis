@@ -22,7 +22,6 @@ class ProviderFactory:
         provider: Optional[LLMProvider] = None,
         model: Optional[str] = None,
         temperature: Optional[float] = None,
-        max_tokens: int = 4096,
     ) -> BaseLLMProvider:
         """
         Create an LLM provider instance.
@@ -31,7 +30,6 @@ class ProviderFactory:
             provider: The LLM provider to use (defaults to settings)
             model: Model to use (defaults to provider's default)
             temperature: Sampling temperature (defaults to settings)
-            max_tokens: Maximum tokens in response
 
         Returns:
             An instance of the appropriate LLM provider
@@ -51,33 +49,17 @@ class ProviderFactory:
             )
 
         if provider == LLMProvider.OPENAI:
-            return OpenAIProvider(
-                api_key=api_key,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            return OpenAIProvider(api_key=api_key, model=model, temperature=temperature)
         elif provider == LLMProvider.ANTHROPIC:
-            return AnthropicProvider(
-                api_key=api_key,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            return AnthropicProvider(api_key=api_key, model=model, temperature=temperature)
         elif provider == LLMProvider.GEMINI:
-            return GeminiProvider(
-                api_key=api_key,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            return GeminiProvider(api_key=api_key, model=model, temperature=temperature)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
     @staticmethod
     def create_all_configured(
         temperature: Optional[float] = None,
-        max_tokens: int = 4096,
     ) -> dict[str, BaseLLMProvider]:
         """
         Create instances of all configured providers.
@@ -87,7 +69,6 @@ class ProviderFactory:
 
         Args:
             temperature: Sampling temperature (defaults to settings)
-            max_tokens: Maximum tokens in response
 
         Returns:
             Dictionary of provider name -> provider instance
@@ -99,7 +80,6 @@ class ProviderFactory:
                 providers[provider.value] = ProviderFactory.create(
                     provider=provider,
                     temperature=temperature,
-                    max_tokens=max_tokens,
                 )
             except ValueError:
                 # Skip providers without API keys

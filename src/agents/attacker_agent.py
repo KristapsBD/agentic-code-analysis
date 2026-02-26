@@ -15,6 +15,7 @@ from src.knowledge.prompts.attacker import (
     CLARIFICATION_RESPONSE_PROMPT_TEMPLATE,
     REBUTTAL_PROMPT_TEMPLATE,
     SCAN_PROMPT_TEMPLATE,
+    VULNERABILITY_TYPES,
 )
 from src.providers.base_provider import BaseLLMProvider
 
@@ -67,6 +68,7 @@ class AttackerAgent(BaseAgent):
             contract_path=contract_path,
             language=language,
             contract_code=contract_code,
+            vulnerability_types=", ".join(VULNERABILITY_TYPES),
         )
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=0.3)

@@ -38,9 +38,8 @@ class GeminiProvider(BaseLLMProvider):
         api_key: str,
         model: str = "gemini-2.5-flash",
         temperature: float = 0.7,
-        max_tokens: int = 4096,
     ):
-        super().__init__(api_key, model, temperature, max_tokens)
+        super().__init__(api_key, model, temperature)
         logger.debug(f"Initializing GeminiProvider with model={model}")
         self.client = genai.Client(api_key=api_key)
         logger.debug("Gemini client created successfully")
@@ -53,8 +52,8 @@ class GeminiProvider(BaseLLMProvider):
         self,
         messages: list[Message],
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
         web_search: bool = False,
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Send messages to Gemini and get a response.
@@ -62,10 +61,13 @@ class GeminiProvider(BaseLLMProvider):
         Args:
             messages: List of messages in the conversation.
             temperature: Optional override for sampling temperature.
-            max_tokens: Optional override for max tokens.
             web_search: When True, enables Google Search grounding. Gemini
                         will search the web when needed and incorporate results
                         into its response automatically.
+            json_mode: When True, sets response_mime_type="application/json" so
+                       Gemini is forced to emit valid JSON at the API level rather
+                       than relying solely on prompt instructions. Disabled
+                       automatically when web_search=True (incompatible).
         """
         self._validate_messages(messages)
 
@@ -73,23 +75,51 @@ class GeminiProvider(BaseLLMProvider):
 
         config_kwargs: dict[str, Any] = {
             "temperature": temperature if temperature is not None else self.temperature,
-            "max_output_tokens": max_tokens if max_tokens is not None else self.max_tokens,
         }
         if system_instruction:
             config_kwargs["system_instruction"] = system_instruction
         if web_search:
             config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+        elif json_mode:
+            # response_mime_type is incompatible with search grounding tools
+            config_kwargs["response_mime_type"] = "application/json"
 
         config = types.GenerateContentConfig(**config_kwargs)
 
-        logger.debug(
-            f"Sending request to Gemini (model={self.model}, "
-            f"turns={len(contents)}, web_search={web_search})"
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            _SEP = "─" * 60
+            logger.debug(
+                f"[Gemini] → Request: model={self.model}, "
+                f"content_turns={len(contents)}, web_search={web_search}, "
+                f"json_mode={json_mode}, "
+                f"temperature={config_kwargs.get('temperature')}, "
+                f"response_mime_type={config_kwargs.get('response_mime_type', 'text/plain')}"
+            )
 
         response = await self._call_api(contents, config)
 
         content = self._extract_text(response)
+
+        # Log whether web search was actually invoked
+        if web_search:
+            grounding = None
+            if response.candidates:
+                grounding = getattr(response.candidates[0], "grounding_metadata", None)
+            if grounding:
+                queries = getattr(grounding, "web_search_queries", None) or []
+                chunks = getattr(grounding, "grounding_chunks", None) or []
+                if queries:
+                    logger.info(
+                        f"[Gemini] Web search used: {len(queries)} "
+                        f"quer{'y' if len(queries) == 1 else 'ies'}, "
+                        f"{len(chunks)} source(s)"
+                    )
+                    for q in queries:
+                        logger.debug(f"[Gemini] Search query: {q!r}")
+                else:
+                    logger.debug("[Gemini] Web search enabled but model did not query")
+            else:
+                logger.debug("[Gemini] Web search enabled but no grounding metadata returned")
 
         prompt_tokens = 0
         completion_tokens = 0
@@ -100,9 +130,25 @@ class GeminiProvider(BaseLLMProvider):
             completion_tokens = getattr(usage, "candidates_token_count", 0) or 0
             total_tokens = getattr(usage, "total_token_count", 0) or 0
 
-        logger.debug(
-            f"Gemini response: {len(content)} chars, {total_tokens} tokens"
+        finish_reason_raw = getattr(
+            response.candidates[0] if response.candidates else None,
+            "finish_reason", None,
         )
+        # Normalise to a plain string (Gemini returns an enum like FinishReason.STOP)
+        if finish_reason_raw is None:
+            finish_reason = "stop"
+        elif hasattr(finish_reason_raw, "name"):
+            finish_reason = finish_reason_raw.name.lower()
+        else:
+            finish_reason = str(finish_reason_raw).lower()
+
+        if logger.isEnabledFor(logging.DEBUG):
+            _SEP = "─" * 60
+            logger.debug(
+                f"[Gemini] ← Response: {len(content)} chars | "
+                f"tokens: {total_tokens} total / {prompt_tokens} prompt / {completion_tokens} completion | "
+                f"finish_reason={finish_reason}"
+            )
 
         return LLMResponse(
             content=content,
@@ -110,7 +156,7 @@ class GeminiProvider(BaseLLMProvider):
             tokens_used=total_tokens,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            finish_reason="stop",
+            finish_reason=finish_reason,
             raw_response=None,  # proto objects are not JSON-serialisable
         )
 

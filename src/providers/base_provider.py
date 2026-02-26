@@ -53,12 +53,10 @@ class BaseLLMProvider(ABC):
         api_key: str,
         model: str,
         temperature: float = 0.7,
-        max_tokens: int = 4096,
     ):
         self.api_key = api_key
         self.model = model
         self.temperature = temperature
-        self.max_tokens = max_tokens
 
     @property
     @abstractmethod
@@ -71,8 +69,8 @@ class BaseLLMProvider(ABC):
         self,
         messages: list[Message],
         temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
         web_search: bool = False,
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Send messages to the LLM and get a response.
@@ -80,11 +78,15 @@ class BaseLLMProvider(ABC):
         Args:
             messages: List of messages in the conversation.
             temperature: Optional override for sampling temperature.
-            max_tokens: Optional override for max tokens.
             web_search: When True, enable the provider's built-in web search.
-                        Anthropic uses web_search_20250305; Gemini uses Google
+                        Anthropic uses web_search_20260209; Gemini uses Google
                         Search grounding. Both are executed server-side with no
                         client-side round-trips required.
+            json_mode: When True, instruct the provider to return valid JSON.
+                       For Gemini this sets response_mime_type="application/json"
+                       (enforced at the API level, not via prompt). Ignored when
+                       web_search=True because search grounding is incompatible
+                       with structured output on Gemini.
 
         Returns:
             LLMResponse containing the model's response.
@@ -97,13 +99,16 @@ class BaseLLMProvider(ABC):
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         web_search: bool = False,
+        json_mode: bool = False,
     ) -> str:
         """Simple single-turn completion."""
         messages = []
         if system_prompt:
             messages.append(Message(role="system", content=system_prompt))
         messages.append(Message(role="user", content=prompt))
-        response = await self.complete(messages, temperature=temperature, web_search=web_search)
+        response = await self.complete(
+            messages, temperature=temperature, web_search=web_search, json_mode=json_mode
+        )
         return response.content
 
     def _validate_messages(self, messages: list[Message]) -> None:

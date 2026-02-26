@@ -118,6 +118,7 @@ class BaseAgent(ABC):
         user_message: str,
         include_history: bool = True,
         temperature: Optional[float] = None,
+        json_mode: bool = False,
     ) -> str:
         messages = [Message(role="system", content=self.system_prompt)]
 
@@ -126,9 +127,34 @@ class BaseAgent(ABC):
 
         messages.append(Message(role="user", content=user_message))
 
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"[{self.name}] → Sending {len(messages)} message(s) to LLM "
+                f"(history_turns={len(self.conversation_history)}, "
+                f"temperature={temperature}, web_search={self.web_search}, "
+                f"json_mode={json_mode})"
+            )
+            # _SEP = "─" * 60
+            # for i, msg in enumerate(messages):
+            #     logger.debug(
+            #         f"[{self.name}] Message[{i}] role={msg.role!r} ({len(msg.content)} chars):\n"
+            #         f"{_SEP}\n{msg.content}\n{_SEP}"
+            #     )
+
         response = await self.provider.complete(
-            messages, temperature=temperature, web_search=self.web_search
+            messages, temperature=temperature, web_search=self.web_search, json_mode=json_mode
         )
+
+        if logger.isEnabledFor(logging.DEBUG):
+            _SEP = "─" * 60
+            logger.debug(
+                f"[{self.name}] ← Raw LLM response "
+                f"({len(response.content)} chars | "
+                f"tokens: {response.tokens_used} total / "
+                f"{response.prompt_tokens} prompt / {response.completion_tokens} completion | "
+                f"finish_reason={response.finish_reason!r}):\n"
+                f"{_SEP}\n{response.content}\n{_SEP}"
+            )
 
         # Store in history
         self.conversation_history.append(Message(role="user", content=user_message))
@@ -168,9 +194,24 @@ class BaseAgent(ABC):
             user_message + json_instruction,
             include_history=include_history,
             temperature=temperature,
+            json_mode=True,
         )
 
-        return self._parse_json_response(raw_response)
+        logger.debug(f"[{self.name}] Attempting JSON parse on {len(raw_response)}-char response")
+        parsed = self._parse_json_response(raw_response)
+
+        if parsed.get("_parse_failed"):
+            logger.warning(
+                f"[{self.name}] JSON parsing FAILED — raw_content fallback used. "
+                f"First 300 chars of response: {raw_response[:300]!r}"
+            )
+        else:
+            logger.debug(
+                f"[{self.name}] JSON parsed successfully. "
+                f"Top-level keys: {sorted(parsed.keys())}"
+            )
+
+        return parsed
 
     @staticmethod
     def _parse_json_response(response: str) -> dict[str, Any]:
@@ -189,7 +230,9 @@ class BaseAgent(ABC):
         """
         # Try direct JSON parse
         try:
-            return json.loads(response.strip())
+            result = json.loads(response.strip())
+            logger.debug("JSON parse strategy: direct parse succeeded")
+            return result
         except json.JSONDecodeError:
             pass
 
@@ -199,7 +242,9 @@ class BaseAgent(ABC):
         matches = re.findall(json_pattern, response)
         for match in matches:
             try:
-                return json.loads(match.strip())
+                result = json.loads(match.strip())
+                logger.debug("JSON parse strategy: markdown code block extraction succeeded")
+                return result
             except json.JSONDecodeError:
                 continue
 
@@ -208,12 +253,14 @@ class BaseAgent(ABC):
         brace_end = response.rfind("}")
         if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
             try:
-                return json.loads(response[brace_start:brace_end + 1])
+                result = json.loads(response[brace_start:brace_end + 1])
+                logger.debug("JSON parse strategy: brace-extraction succeeded")
+                return result
             except json.JSONDecodeError:
                 pass
 
         # Fallback: wrap raw content
-        logger.warning(f"Could not parse JSON from response, using raw content fallback")
+        logger.warning("JSON parse strategy: all strategies failed — using raw_content fallback")
         return {"raw_content": response, "_parse_failed": True}
 
     def clear_history(self) -> None:

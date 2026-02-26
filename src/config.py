@@ -5,6 +5,7 @@ Handles environment variables, default settings, and configuration validation.
 """
 
 import logging
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -20,18 +21,48 @@ except (PermissionError, FileNotFoundError):
     pass  # .env file not accessible, will use environment variables or defaults
 
 
-def setup_logging(log_level: str = "INFO") -> None:
+def setup_logging(log_level: str = "INFO") -> Optional[Path]:
     """
     Configure logging for the application.
-    
+
+    When log_level is DEBUG, the full transcript is also written to a
+    timestamped file under data/logs/ so the complete pipeline output
+    can be reviewed after the run.
+
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+
+    Returns:
+        Path to the debug log file, or None when not in DEBUG mode.
     """
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper(), logging.INFO),
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+    numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+    fmt = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
+
+    root = logging.getLogger()
+    root.setLevel(numeric_level)
+
+    # Console handler — always present
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(numeric_level)
+    console_handler.setFormatter(fmt)
+    root.addHandler(console_handler)
+
+    # File handler — only when DEBUG is requested
+    if numeric_level == logging.DEBUG:
+        log_dir = Path("data/logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_file = log_dir / f"debug_{timestamp}.log"
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+        return log_file
+
+    return None
 
 
 class LLMProvider(str, Enum):
