@@ -453,26 +453,34 @@ class Evaluator:
         self,
         benchmark_dir: Path,
         ground_truth_file: Optional[Path] = None,
-    ) -> tuple[BenchmarkResult, BenchmarkResult]:
+    ) -> tuple[BenchmarkResult, BenchmarkResult, BenchmarkResult]:
         """
-        Single-pass evaluation returning both multi-agent and attacker-only baseline results.
+        Single-pass evaluation returning multi-agent, 2-agent, and baseline results.
 
-        Runs the full multi-agent debate once per contract, then derives baseline
-        metrics from the attacker's initial claims before any debate occurs. Both
-        pipelines therefore start from the identical LLM call, eliminating variance
-        from independent runs and halving the number of API calls.
+        Runs the full multi-agent debate once per contract, then derives all three
+        architecture results from the same data — no extra API calls:
+
+        - **Multi-agent (3-agent)**: Judge-confirmed claims only
+        - **2-agent**: Claims the Attacker did not explicitly concede after debate
+        - **Baseline**: Attacker's raw initial claims, all accepted as-is
 
         Args:
             benchmark_dir: Directory containing benchmark contracts
             ground_truth_file: Optional JSON file with ground truth
 
         Returns:
-            (multi_result, baseline_result) — both scored against the same ground truth
+            (multi_result, two_agent_result, baseline_result) — all scored against the same ground truth
         """
         model = settings.get_model_for_provider(self.provider)
 
         multi_result = BenchmarkResult(
             benchmark_name=benchmark_dir.name,
+            started_at=datetime.now(),
+            provider=self.provider.value,
+            model=model,
+        )
+        two_agent_result = BenchmarkResult(
+            benchmark_name=f"{benchmark_dir.name}_two_agent",
             started_at=datetime.now(),
             provider=self.provider.value,
             model=model,
@@ -487,6 +495,7 @@ class Evaluator:
         ground_truths = self._load_ground_truth(benchmark_dir, ground_truth_file)
         contract_files = self._find_contract_files(benchmark_dir)
         multi_result.total_contracts = len(contract_files)
+        two_agent_result.total_contracts = len(contract_files)
         baseline_result.total_contracts = len(contract_files)
 
         llm_provider = ProviderFactory.create(self.provider)
@@ -521,6 +530,16 @@ class Evaluator:
                 multi_result.contract_results.append(multi_eval)
                 multi_result.successful_analyses += 1
 
+                # 2-agent: claims the attacker did NOT concede after seeing the defense
+                # (attacker wins ties — claim is valid unless explicitly retracted)
+                two_agent_eval = self._compare_results_two_agent(
+                    ground_truth=ground_truth,
+                    analysis_result=analysis_result,
+                    analysis_time=analysis_time,
+                )
+                two_agent_result.contract_results.append(two_agent_eval)
+                two_agent_result.successful_analyses += 1
+
                 # Baseline: attacker's initial claims accepted as-is (no debate filtering)
                 baseline_analysis = {
                     "claim_results": [
@@ -553,12 +572,75 @@ class Evaluator:
                 )
                 multi_result.contract_results.append(error_result)
                 multi_result.failed_analyses += 1
+                two_agent_result.contract_results.append(error_result)
+                two_agent_result.failed_analyses += 1
                 baseline_result.contract_results.append(error_result)
                 baseline_result.failed_analyses += 1
 
         multi_result.completed_at = datetime.now()
+        two_agent_result.completed_at = datetime.now()
         baseline_result.completed_at = datetime.now()
-        return multi_result, baseline_result
+        return multi_result, two_agent_result, baseline_result
+
+    def _compare_results_two_agent(
+        self,
+        ground_truth: GroundTruth,
+        analysis_result: dict,
+        analysis_time: float,
+    ) -> EvaluationResult:
+        """
+        Compare 2-agent (attacker + defender, no judge) results with ground truth.
+
+        A claim counts as "predicted" by the 2-agent system if the attacker did NOT
+        explicitly concede after seeing the defender's arguments. This implements the
+        "attacker wins ties" rule: the claim stands unless retracted.
+
+        Severity is taken from the attacker's original claim.
+        """
+        predicted = []
+        for claim_result in analysis_result.get("claim_results", []):
+            if not claim_result.get("attacker_conceded", False):
+                claim = claim_result.get("claim", {})
+                predicted.append({
+                    "type": self._normalize_vuln_type(claim.get("vulnerability_type", "")),
+                    "severity": claim.get("severity", "medium"),
+                    "location": claim.get("location", ""),
+                })
+
+        predicted_types = {p["type"] for p in predicted}
+
+        ground_truth_types = {
+            self._normalize_vuln_type(gt.get("type", ""))
+            for gt in ground_truth.vulnerabilities
+        }
+
+        true_positives = 0
+        false_positives = 0
+        for p_type in predicted_types:
+            parent = self.VULNERABILITY_PARENT_MAP.get(p_type)
+            if p_type in ground_truth_types or (parent and parent in ground_truth_types):
+                true_positives += 1
+            else:
+                false_positives += 1
+
+        false_negatives = 0
+        for gt_type in ground_truth_types:
+            matched = gt_type in predicted_types or any(
+                self.VULNERABILITY_PARENT_MAP.get(p) == gt_type
+                for p in predicted_types
+            )
+            if not matched:
+                false_negatives += 1
+
+        return EvaluationResult(
+            contract_path=ground_truth.contract_path,
+            ground_truth=ground_truth,
+            predicted_vulnerabilities=predicted,
+            true_positives=true_positives,
+            false_positives=false_positives,
+            false_negatives=false_negatives,
+            analysis_time_seconds=analysis_time,
+        )
 
     def print_comparison(
         self,
@@ -566,14 +648,7 @@ class Evaluator:
         baseline: BenchmarkResult,
         console: Optional[Console] = None,
     ) -> None:
-        """
-        Print a side-by-side comparison of multi-agent vs baseline results.
-
-        Args:
-            multi: BenchmarkResult from the multi-agent pipeline
-            baseline: BenchmarkResult from the single-prompt baseline
-            console: Optional Rich Console instance
-        """
+        """Print a side-by-side comparison of multi-agent vs baseline results."""
         console = console or Console()
 
         table = Table(
@@ -586,21 +661,19 @@ class Evaluator:
         table.add_column("Baseline", justify="right")
         table.add_column("Delta", justify="right")
 
-        def _delta(multi_val: float, base_val: float, higher_is_better: bool = True) -> str:
-            diff = multi_val - base_val
+        def _delta(a: float, b: float, higher_is_better: bool = True) -> str:
+            diff = a - b
             if diff == 0:
                 return "[white]0.00%[/white]"
-            better = (diff > 0) == higher_is_better
-            color = "green" if better else "red"
+            color = "green" if (diff > 0) == higher_is_better else "red"
             sign = "+" if diff > 0 else ""
             return f"[{color}]{sign}{diff:.2%}[/{color}]"
 
-        def _int_delta(multi_val: int, base_val: int, higher_is_better: bool = True) -> str:
-            diff = multi_val - base_val
+        def _int_delta(a: int, b: int, higher_is_better: bool = True) -> str:
+            diff = a - b
             if diff == 0:
                 return "[white]0[/white]"
-            better = (diff > 0) == higher_is_better
-            color = "green" if better else "red"
+            color = "green" if (diff > 0) == higher_is_better else "red"
             sign = "+" if diff > 0 else ""
             return f"[{color}]{sign}{diff}[/{color}]"
 
@@ -626,6 +699,94 @@ class Evaluator:
 
         for label, mv, bv, higher in int_rows:
             table.add_row(label, str(mv), str(bv), _int_delta(mv, bv, higher))
+
+        console.print(table)
+
+    def print_three_way_comparison(
+        self,
+        multi: BenchmarkResult,
+        two_agent: BenchmarkResult,
+        baseline: BenchmarkResult,
+        console: Optional[Console] = None,
+    ) -> None:
+        """
+        Print a side-by-side comparison of all three architectures.
+
+        Columns: Multi-Agent (3-agent) | 2-Agent | Baseline (attacker-only)
+        Delta columns show change vs the column to the right (higher architecture vs lower).
+
+        Args:
+            multi: Full Attacker → Defender → Judge pipeline
+            two_agent: Attacker + Defender only (no Judge)
+            baseline: Attacker's raw initial claims
+            console: Optional Rich Console instance
+        """
+        console = console or Console()
+
+        table = Table(
+            title="Architecture Comparison: 3-Agent vs 2-Agent vs Baseline",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("Metric", style="cyan")
+        table.add_column("3-Agent (Judge)", justify="right")
+        table.add_column("vs 2-Agent", justify="right")
+        table.add_column("2-Agent (No Judge)", justify="right")
+        table.add_column("vs Baseline", justify="right")
+        table.add_column("Baseline (Attacker)", justify="right")
+
+        def _delta(a: float, b: float, higher_is_better: bool = True) -> str:
+            diff = a - b
+            if diff == 0:
+                return "[white]±0.00%[/white]"
+            color = "green" if (diff > 0) == higher_is_better else "red"
+            sign = "+" if diff > 0 else ""
+            return f"[{color}]{sign}{diff:.2%}[/{color}]"
+
+        def _int_delta(a: int, b: int, higher_is_better: bool = True) -> str:
+            diff = a - b
+            if diff == 0:
+                return "[white]±0[/white]"
+            color = "green" if (diff > 0) == higher_is_better else "red"
+            sign = "+" if diff > 0 else ""
+            return f"[{color}]{sign}{diff}[/{color}]"
+
+        float_rows = [
+            ("Micro Precision", multi.micro_precision, two_agent.micro_precision, baseline.micro_precision, True),
+            ("Micro Recall",    multi.micro_recall,    two_agent.micro_recall,    baseline.micro_recall,    True),
+            ("Micro F1",        multi.micro_f1,        two_agent.micro_f1,        baseline.micro_f1,        True),
+            ("Macro Precision", multi.macro_precision, two_agent.macro_precision, baseline.macro_precision, True),
+            ("Macro Recall",    multi.macro_recall,    two_agent.macro_recall,    baseline.macro_recall,    True),
+            ("Macro F1",        multi.macro_f1,        two_agent.macro_f1,        baseline.macro_f1,        True),
+        ]
+
+        for label, mv, tv, bv, higher in float_rows:
+            table.add_row(
+                label,
+                f"{mv:.2%}",
+                _delta(mv, tv, higher),
+                f"{tv:.2%}",
+                _delta(tv, bv, higher),
+                f"{bv:.2%}",
+            )
+
+        table.add_row("", "", "", "", "", "")
+
+        int_rows = [
+            ("True Positives",  multi.total_true_positives,  two_agent.total_true_positives,  baseline.total_true_positives,  True),
+            ("False Positives", multi.total_false_positives, two_agent.total_false_positives, baseline.total_false_positives, False),
+            ("False Negatives", multi.total_false_negatives, two_agent.total_false_negatives, baseline.total_false_negatives, False),
+        ]
+
+        for label, mv, tv, bv, higher in int_rows:
+            table.add_row(
+                label,
+                str(mv),
+                _int_delta(mv, tv, higher),
+                str(tv),
+                _int_delta(tv, bv, higher),
+                str(bv),
+            )
 
         console.print(table)
 

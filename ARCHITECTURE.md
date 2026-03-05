@@ -118,9 +118,27 @@ python -m src.main analyze contracts/Token.sol --provider anthropic --rounds 2
 - `<contract_name>_<timestamp>.json` — full structured result
 - `<contract_name>_<timestamp>.md` — human-readable Markdown report
 
+### `sca benchmark <benchmark_dir>`
+
+The primary research command. Runs the full 3-agent debate on every contract once, then derives all three architecture results from the same data — no extra API calls:
+
+| Architecture | Valid if… |
+|---|---|
+| **3-agent (full)** | Judge confirmed the claim (`verdict.is_valid = True`) |
+| **2-agent (no Judge)** | Attacker did **not** concede after seeing the defense (`attacker_conceded = False`) |
+| **Baseline (attacker-only)** | Claim exists (all initial claims accepted) |
+
+Prints three individual result tables, then a single six-column comparison table:
+
+```
+3-Agent (Judge) | vs 2-Agent | 2-Agent (No Judge) | vs Baseline | Baseline (Attacker)
+```
+
+The saved JSON contains `"multi_agent"`, `"two_agent"`, and `"baseline"` keys.
+
 ### `sca evaluate <benchmark_dir>`
 
-Runs analysis on every contract in a directory and calculates aggregate metrics (precision, recall, F1).
+Runs analysis on every contract in a directory and calculates aggregate metrics (precision, recall, F1) for the full 3-agent pipeline only.
 
 ### `sca compare <contract_path>`
 
@@ -418,7 +436,17 @@ Note: `defender_argument` is a field in `Finding` but is currently not populated
 
 #### `Evaluator`
 
-Batch runner for benchmark evaluation. Runs `DebateManager.run_debate()` on every `.sol`/`.vy`/`.rs` file in a directory and computes aggregate metrics. Uses `asyncio.gather()` for concurrent execution across contracts.
+Batch runner for benchmark evaluation. Runs `DebateManager.run_debate()` on every `.sol`/`.vy`/`.rs` file in a directory and computes aggregate metrics.
+
+**`evaluate_both(benchmark_dir, ground_truth_file) → (multi, two_agent, baseline)`**
+
+Single-pass method that derives three `BenchmarkResult` objects from one debate run per contract:
+
+- **`_compare_results()`** — counts a claim as predicted if `verdict.is_valid = True` (Judge confirmed).
+- **`_compare_results_two_agent()`** — counts a claim as predicted if `attacker_conceded = False` (attacker held position after debate). Severity is taken from the attacker's original claim.
+- Baseline is constructed inline: all `initial_claims` are accepted as-is.
+
+**`print_three_way_comparison(multi, two_agent, baseline)`** — renders a six-column Rich table (3-Agent | Δ | 2-Agent | Δ | Baseline) for Precision, Recall, F1 (micro and macro), and raw TP/FP/FN counts. Delta columns are colour-coded green/red.
 
 ---
 
@@ -677,6 +705,16 @@ This dual gate prevents the Judge from requesting unnecessary clarification on c
 
 ### Defender's verdict does not directly determine the final outcome
 The Defender can return `VALID_VULNERABILITY` in its initial review, but this does not bypass the debate rounds or the Judge. The Defender's verdict is informational — the Judge always renders the binding decision.
+
+### Three-architecture comparison derives all results from one run
+
+The `benchmark` command compares three pipeline architectures (3-agent, 2-agent, baseline) without running extra LLM calls. All three results are computed from the single 3-agent run per contract:
+
+- **3-agent verdict** already recorded in `ClaimResult.verdict.is_valid`.
+- **2-agent verdict** uses `ClaimResult.attacker_conceded` — a field already written by the debate loop regardless of whether the Judge is conceptually present. A claim is counted as valid by the 2-agent system if the Attacker did not explicitly concede (attacker wins ties).
+- **Baseline** is reconstructed from `DebateResult.initial_claims` — the Attacker's raw output before any debate.
+
+This design means the three architectures are always evaluated on identical LLM outputs, eliminating sampling variance as a confound when comparing them.
 
 ### Web search is a run-level flag, not a per-call decision
 The `web_search` flag is set once on `DebateManager` and propagated to all three agents at construction time via `self.web_search` on `BaseAgent`. This means every LLM call across the entire debate — initial scan, rebuttals, clarifications, verdicts — either all have web search enabled or none do. A finer-grained approach (e.g. only the Attacker searches) was not implemented as the added complexity was not justified.

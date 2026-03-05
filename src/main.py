@@ -336,24 +336,30 @@ def benchmark(
 
     evaluator = Evaluator(provider=provider, max_rounds=rounds)
 
-    # Single pass — attacker's initial claims become the baseline, judge-filtered
-    # claims become the multi-agent result. Both start from the identical LLM call.
+    # Single pass — all three architectures derived from the same LLM run:
+    #   3-agent:  Attacker → Defender → Judge (judge-confirmed claims)
+    #   2-agent:  Attacker + Defender only (claims attacker did not concede)
+    #   baseline: Attacker's raw initial claims, all accepted as-is
     with console.status("[bold green]Attacker → Defender → Judge debate in progress..."):
-        multi_result, baseline_result = asyncio.run(
+        multi_result, two_agent_result, baseline_result = asyncio.run(
             evaluator.evaluate_both(benchmark_dir, ground_truth)
         )
 
     console.print()
-    console.print("[bold cyan]Multi-Agent Results:[/bold cyan]")
+    console.print("[bold cyan]3-Agent Results (Attacker + Defender + Judge):[/bold cyan]")
     evaluator.print_results(multi_result, console)
+
+    console.print()
+    console.print("[bold cyan]2-Agent Results (Attacker + Defender, no Judge):[/bold cyan]")
+    evaluator.print_results(two_agent_result, console)
 
     console.print()
     console.print("[bold cyan]Baseline Results (attacker-only, no debate):[/bold cyan]")
     evaluator.print_results(baseline_result, console)
 
-    # Print comparison
+    # Print three-way comparison
     console.print()
-    evaluator.print_comparison(multi_result, baseline_result, console)
+    evaluator.print_three_way_comparison(multi_result, two_agent_result, baseline_result, console)
 
     # Save combined output
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -361,6 +367,7 @@ def benchmark(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined = {
         "multi_agent": multi_result.to_dict(),
+        "two_agent": two_agent_result.to_dict(),
         "baseline": baseline_result.to_dict(),
     }
     output_path.write_text(_json.dumps(combined, indent=2, default=str))

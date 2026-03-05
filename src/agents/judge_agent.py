@@ -237,11 +237,20 @@ class JudgeAgent(BaseAgent):
         if parsed.get("_parse_failed"):
             return self._fallback_parse_verdict(parsed.get("raw_content", ""), claim_id)
 
-        # Extract verdict validity
-        verdict_str = parsed.get("verdict", "NOT_VULNERABLE").upper()
-        is_valid = "VALID_VULNERABILITY" in verdict_str or "VALID" in verdict_str.split("_")[0]
-        if "NOT_VULNERABLE" in verdict_str or "NOT VULNERABLE" in verdict_str:
+        # Extract verdict validity.
+        # Use an explicit allowlist to avoid substring false-matches
+        # (e.g. "VALID" in "INVALID" is True in Python).
+        verdict_str = parsed.get("verdict", "NOT_VULNERABLE").upper().strip()
+        _VALID_VERDICTS = {"VALID_VULNERABILITY", "VALID", "VULNERABLE", "CONFIRMED"}
+        _INVALID_VERDICTS = {"NOT_VULNERABLE", "NOT VULNERABLE", "INVALID", "NOT_VALID", "INVALID_CLAIM"}
+        if verdict_str in _VALID_VERDICTS:
+            is_valid = True
+        elif verdict_str in _INVALID_VERDICTS:
             is_valid = False
+        else:
+            # Fallback for unexpected strings: require an exact prefix match on "VALID"
+            # that is not part of "INVALID"
+            is_valid = verdict_str.startswith("VALID") and not verdict_str.startswith("INVALID")
 
         # Extract severity
         severity = parsed.get("severity", "medium")

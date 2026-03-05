@@ -92,9 +92,15 @@ python -m src.main analyze contract.sol --provider anthropic --output data/resul
 
 ---
 
-### `benchmark` — compare multi-agent vs. baseline *(primary research command)*
+### `benchmark` — compare architectures *(primary research command)*
 
-Runs both the full multi-agent pipeline and a single-prompt baseline in one pass (same LLM calls, no variance), then prints a side-by-side precision/recall/F1 comparison.
+Runs the full 3-agent debate once per contract, then derives all three architecture results from the same LLM run (no extra API calls), and prints a side-by-side precision/recall/F1 comparison.
+
+| Architecture | What counts as a valid finding |
+|---|---|
+| **3-agent** | Judge confirmed (`verdict.is_valid = True`) |
+| **2-agent** | Attacker did not concede after seeing the defense (`attacker_conceded = False`) |
+| **Baseline** | All initial Attacker claims, accepted as-is |
 
 ```bash
 python -m src.main benchmark <BENCHMARK_DIR> [OPTIONS]
@@ -112,6 +118,8 @@ python -m src.main benchmark data/benchmarks/medium \
     --ground-truth data/benchmarks/ground_truth/medium_benchmark.json \
     --provider gemini
 ```
+
+The output JSON contains three top-level keys: `"multi_agent"`, `"two_agent"`, and `"baseline"`.
 
 ---
 
