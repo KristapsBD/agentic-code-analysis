@@ -213,6 +213,42 @@ class TestDebateManager:
         assert DebateManager._has_converged(0.6, 0.6) is False
 
 
+class TestDebateResultConversation:
+    """Tests for DebateResult conversation serialization."""
+
+    def test_result_to_dict_includes_conversation(self):
+        from src.orchestration.conversation import Conversation, TurnType
+
+        conv = Conversation("test.sol")
+        conv.add_turn(TurnType.ATTACK, "Attacker", "Found reentrancy", claim_id="c1")
+        conv.add_turn(TurnType.DEFENSE, "Defender", "No it isnt", claim_id="c1")
+
+        result = DebateResult(
+            contract_path="test.sol",
+            contract_language="solidity",
+            started_at=datetime.now(),
+            conversation=conv,
+        )
+        data = result.to_dict()
+
+        assert "conversation" in data
+        assert len(data["conversation"]) == 2
+        assert data["conversation"][0]["turn_type"] == "attack"
+        assert data["conversation"][0]["agent_name"] == "Attacker"
+        assert data["conversation"][0]["content"] == "Found reentrancy"
+        assert data["conversation"][1]["turn_type"] == "defense"
+
+    def test_result_to_dict_no_conversation(self):
+        result = DebateResult(
+            contract_path="test.sol",
+            contract_language="solidity",
+            started_at=datetime.now(),
+        )
+        data = result.to_dict()
+        assert "conversation" in data
+        assert data["conversation"] == []
+
+
 class TestClaimResult:
     """Tests for ClaimResult."""
 

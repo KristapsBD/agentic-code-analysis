@@ -145,6 +145,7 @@ class DebateResult:
             "high_count": self.high_count,
             "initial_claims": [c.to_dict() for c in self.initial_claims],
             "claim_results": [r.to_dict() for r in self.claim_results],
+            "conversation": ([t.to_dict() for t in self.conversation.turns] if self.conversation else []),
             "metadata": self.metadata,
         }
 
