@@ -252,6 +252,19 @@ class TestDebateResultConversation:
 class TestClaimResult:
     """Tests for ClaimResult."""
 
+    def test_claim_result_final_assessment_not_truncated(self):
+        claim = VulnerabilityClaim(
+            id="test-1", vulnerability_type="Test", severity="high",
+            location="test()", description="Test", evidence="Test", confidence=0.9,
+        )
+        verdict = Verdict(
+            claim_id="test-1", is_valid=True, severity="high", confidence=0.9,
+            reasoning="Test", recommendation="Fix", attacker_score=0.8, defender_score=0.3,
+        )
+        long_text = "A" * 1000
+        result = ClaimResult(claim=claim, verdict=verdict, debate_rounds=1, final_assessment=long_text)
+        assert len(result.to_dict()["final_assessment"]) == 1000
+
     def test_claim_result_creation(self):
         """Test creating a claim result."""
         claim = VulnerabilityClaim(

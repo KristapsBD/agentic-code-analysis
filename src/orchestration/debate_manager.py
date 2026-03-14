@@ -516,7 +516,7 @@ class DebateManager:
             attacker_conceded=attacker_conceded,
             defender_acknowledged=defender_acknowledged,
             judge_requested_clarification=judge_requested_clarification,
-            final_assessment=judge_response.content[:500],
+            final_assessment=judge_response.content,
         )
 
     async def _run_clarification_round(
