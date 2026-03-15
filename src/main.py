@@ -149,14 +149,21 @@ def analyze(
     # Save JSON (full details)
     report_generator.save_json(report, json_path)
     logger.info(f"JSON report saved to: {json_path}")
-    
+
     # Save Markdown (human-readable)
     report_generator.save_markdown(report, md_path)
     logger.info(f"Markdown report saved to: {md_path}")
-    
+
+    # Save full debate transcript
+    import json as _json
+    transcript_path = results_dir / f"{contract_name}_{timestamp}_transcript.json"
+    transcript_path.write_text(_json.dumps(result, indent=2, default=str))
+    logger.info(f"Transcript saved to: {transcript_path}")
+
     console.print(f"\n[green]✓ Reports saved:[/green]")
-    console.print(f"  JSON: {json_path}")
-    console.print(f"  Markdown: {md_path}")
+    console.print(f"  JSON:       {json_path}")
+    console.print(f"  Markdown:   {md_path}")
+    console.print(f"  Transcript: {transcript_path}")
     
     # Save to custom path if specified
     if output:
@@ -336,13 +343,16 @@ def benchmark(
 
     evaluator = Evaluator(provider=provider, max_rounds=rounds)
 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    trace_dir = Path(f"data/results/transcripts/benchmark_{timestamp}")
+
     # Single pass — all three architectures derived from the same LLM run:
     #   3-agent:  Attacker → Defender → Judge (judge-confirmed claims)
     #   2-agent:  Attacker + Defender only (claims attacker did not concede)
     #   baseline: Attacker's raw initial claims, all accepted as-is
     with console.status("[bold green]Attacker → Defender → Judge debate in progress..."):
         multi_result, two_agent_result, baseline_result = asyncio.run(
-            evaluator.evaluate_both(benchmark_dir, ground_truth)
+            evaluator.evaluate_both(benchmark_dir, ground_truth, trace_dir=trace_dir)
         )
 
     console.print()
@@ -362,7 +372,6 @@ def benchmark(
     evaluator.print_three_way_comparison(multi_result, two_agent_result, baseline_result, console)
 
     # Save combined output
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_path = output or Path(f"data/results/benchmark_{timestamp}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined = {
@@ -372,6 +381,7 @@ def benchmark(
     }
     output_path.write_text(_json.dumps(combined, indent=2, default=str))
     console.print(f"\n[green]Results saved to:[/green] {output_path}")
+    console.print(f"[green]Transcripts saved to:[/green] {trace_dir}/")
 
 
 @app.command()

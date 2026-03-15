@@ -453,6 +453,7 @@ class Evaluator:
         self,
         benchmark_dir: Path,
         ground_truth_file: Optional[Path] = None,
+        trace_dir: Optional[Path] = None,
     ) -> tuple[BenchmarkResult, BenchmarkResult, BenchmarkResult]:
         """
         Single-pass evaluation returning multi-agent, 2-agent, and baseline results.
@@ -520,6 +521,12 @@ class Evaluator:
                     contract_code, str(contract_path)
                 )
                 analysis_time = (datetime.now() - start_time).total_seconds()
+
+                if trace_dir is not None:
+                    trace_dir.mkdir(parents=True, exist_ok=True)
+                    (trace_dir / f"{contract_path.stem}.json").write_text(
+                        json.dumps(analysis_result, indent=2, default=str)
+                    )
 
                 # Multi-agent: only judge-confirmed claims count
                 multi_eval = self._compare_results(
