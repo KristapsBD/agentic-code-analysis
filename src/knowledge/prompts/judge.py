@@ -16,9 +16,9 @@ EVALUATION MINDSET:
 
 CRITERIA FOR VALID_VULNERABILITY (all must hold):
 1. CONCRETE CODE EVIDENCE — The vulnerable pattern must exist in the actual code
-2. REALISTIC EXPLOIT PATH — A specific, plausible call sequence that triggers the vulnerability
+2. REALISTIC EXPLOIT PATH — A specific, step-by-step call sequence that an external attacker could execute on mainnet. The preconditions must be achievable: inputs within physically plausible ranges, no reliance on impossible economic conditions (e.g., overflow requiring amounts exceeding total Ether in existence), and no requirement for the attacker to act against their own financial interest to trigger the bug.
 3. INSUFFICIENT MITIGATION — No existing protection specifically blocks this exact attack path
-4. REAL IMPACT — The exploit causes meaningful harm to funds, access control, or contract availability
+4. REAL IMPACT — The exploit causes meaningful harm to a party other than the attacker themselves. Self-inflicted loss (attacker harms only their own tokens or position) is not a valid vulnerability.
 
 COMMON FALSE POSITIVES TO REJECT:
 - Reentrancy claims when nonReentrant is correctly applied to the vulnerable function
@@ -27,6 +27,8 @@ COMMON FALSE POSITIVES TO REJECT:
 - DoS claims on contracts that do not accept ETH
 - Claims that require the contract owner to act maliciously (owner is a trusted role by design)
 - "Potential" issues that ignore checks already present in the code
+- Arithmetic overflow/underflow claims where reaching the overflow boundary requires values that exceed physical limits (total Ether supply, maximum plausible token quantities bounded by deployment parameters)
+- Claims where the only exploitable outcome harms the attacker themselves with no impact on other users, liquidity, or access control
 
 SEVERITY GUIDELINES:
 - CRITICAL: Direct, unrestricted fund drainage or complete contract compromise via a simple, realistic attack
@@ -61,9 +63,10 @@ DEFENDER'S ARGUMENT:
 EVALUATE THE FOLLOWING:
 1. Is the vulnerable code pattern present in the actual code at the cited location?
 2. Does the Defender's cited protection specifically block this attack path — not just a related function or general pattern?
-3. Is the exploit path realistic and achievable by an external caller?
-4. Did either side ignore relevant code evidence?
-5. What is the concrete impact if exploited?
+3. Is the exploit path realistic? Can you write out the step-by-step transactions an attacker would submit? Do the preconditions require physically impossible values (e.g., amounts exceeding total Ether supply, overflow boundaries unreachable given token supply caps)?
+4. Does the exploit harm parties other than the attacker themselves? If the only affected party is the attacker (e.g., they lose their own tokens or pay more gas), this is NOT a valid vulnerability.
+5. Did either side ignore relevant code evidence?
+6. What is the concrete impact if exploited?
 
 Rule based on evidence quality. If the Attacker demonstrates a concrete exploit and the Defender does not identify a specific blocking mechanism, rule VALID_VULNERABILITY. If the Defender identifies a specific, applicable mitigation that the Attacker cannot counter, rule NOT_VULNERABLE.
 
@@ -116,6 +119,8 @@ PREVIOUS DEBATE CONTEXT:
 - Defender's main argument: {defender_argument}
 
 Render your FINAL verdict. No further clarification is possible — you must decide.
+
+Apply the same criteria as the initial judgment: the exploit must be physically achievable (no impossible preconditions) and must cause harm to a party other than the attacker themselves.
 
 Respond with ONLY this JSON structure:
 

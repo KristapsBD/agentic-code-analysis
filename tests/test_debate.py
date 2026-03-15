@@ -165,3 +165,14 @@ class TestClaimResult:
         claim, verdict = base_claim_result
         result = ClaimResult(claim=claim, verdict=verdict, debate_rounds=2, judge_requested_clarification=True)
         assert result.to_dict()["judge_requested_clarification"] is True
+
+    def test_to_dict_defender_verdict(self, base_claim_result):
+        claim, verdict = base_claim_result
+        for dv in ("VALID_VULNERABILITY", "INVALID_CLAIM", "PARTIALLY_MITIGATED"):
+            result = ClaimResult(claim=claim, verdict=verdict, debate_rounds=1, defender_verdict=dv)
+            assert result.to_dict()["defender_verdict"] == dv
+
+    def test_to_dict_defender_verdict_default_none(self, base_claim_result):
+        claim, verdict = base_claim_result
+        result = ClaimResult(claim=claim, verdict=verdict, debate_rounds=1)
+        assert result.to_dict()["defender_verdict"] is None

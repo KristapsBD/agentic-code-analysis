@@ -73,6 +73,7 @@ class ClaimResult:
     defender_acknowledged: bool = False
     judge_requested_clarification: bool = False
     final_assessment: str = ""
+    defender_verdict: Optional[str] = None  # VALID_VULNERABILITY | INVALID_CLAIM | PARTIALLY_MITIGATED
 
     def to_dict(self) -> dict:
         """Convert to dictionary format."""
@@ -84,6 +85,7 @@ class ClaimResult:
             "defender_acknowledged": self.defender_acknowledged,
             "judge_requested_clarification": self.judge_requested_clarification,
             "final_assessment": self.final_assessment,
+            "defender_verdict": self.defender_verdict,
         }
 
 
@@ -367,6 +369,7 @@ class DebateManager:
         defender_argument = defender_response.content
         attacker_confidence = claim.confidence
         defender_confidence = defender_response.confidence
+        defender_verdict = defender_response.metadata.get("defense_verdict", "VALID_VULNERABILITY")
 
         # --- Step 2: Multi-round debate with convergence checks ---
         debate_history: list[dict[str, str]] = []
@@ -517,6 +520,7 @@ class DebateManager:
             defender_acknowledged=defender_acknowledged,
             judge_requested_clarification=judge_requested_clarification,
             final_assessment=judge_response.content,
+            defender_verdict=defender_verdict,
         )
 
     async def _run_clarification_round(

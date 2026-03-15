@@ -606,7 +606,9 @@ class Evaluator:
         """
         predicted = []
         for claim_result in analysis_result.get("claim_results", []):
-            if not claim_result.get("attacker_conceded", False):
+            # Claim passes if defender did not explicitly reject it (INVALID_CLAIM).
+            # VALID_VULNERABILITY and PARTIALLY_MITIGATED both indicate remaining attack surface.
+            if claim_result.get("defender_verdict", "VALID_VULNERABILITY") != "INVALID_CLAIM":
                 claim = claim_result.get("claim", {})
                 predicted.append({
                     "type": self._normalize_vuln_type(claim.get("vulnerability_type", "")),
@@ -648,66 +650,6 @@ class Evaluator:
             false_negatives=false_negatives,
             analysis_time_seconds=analysis_time,
         )
-
-    def print_comparison(
-        self,
-        multi: BenchmarkResult,
-        baseline: BenchmarkResult,
-        console: Optional[Console] = None,
-    ) -> None:
-        """Print a side-by-side comparison of multi-agent vs baseline results."""
-        console = console or Console()
-
-        table = Table(
-            title="Multi-Agent vs. Baseline Comparison",
-            show_header=True,
-            header_style="bold magenta",
-        )
-        table.add_column("Metric", style="cyan")
-        table.add_column("Multi-Agent", justify="right")
-        table.add_column("Baseline", justify="right")
-        table.add_column("Delta", justify="right")
-
-        def _delta(a: float, b: float, higher_is_better: bool = True) -> str:
-            diff = a - b
-            if diff == 0:
-                return "[white]0.00%[/white]"
-            color = "green" if (diff > 0) == higher_is_better else "red"
-            sign = "+" if diff > 0 else ""
-            return f"[{color}]{sign}{diff:.2%}[/{color}]"
-
-        def _int_delta(a: int, b: int, higher_is_better: bool = True) -> str:
-            diff = a - b
-            if diff == 0:
-                return "[white]0[/white]"
-            color = "green" if (diff > 0) == higher_is_better else "red"
-            sign = "+" if diff > 0 else ""
-            return f"[{color}]{sign}{diff}[/{color}]"
-
-        rows = [
-            ("Micro Precision", multi.micro_precision, baseline.micro_precision, True),
-            ("Micro Recall",    multi.micro_recall,    baseline.micro_recall,    True),
-            ("Micro F1",        multi.micro_f1,        baseline.micro_f1,        True),
-            ("Macro Precision", multi.macro_precision, baseline.macro_precision, True),
-            ("Macro Recall",    multi.macro_recall,    baseline.macro_recall,    True),
-            ("Macro F1",        multi.macro_f1,        baseline.macro_f1,        True),
-        ]
-
-        for label, mv, bv, higher in rows:
-            table.add_row(label, f"{mv:.2%}", f"{bv:.2%}", _delta(mv, bv, higher))
-
-        table.add_row("", "", "", "")
-
-        int_rows = [
-            ("True Positives",  multi.total_true_positives,  baseline.total_true_positives,  True),
-            ("False Positives", multi.total_false_positives, baseline.total_false_positives, False),
-            ("False Negatives", multi.total_false_negatives, baseline.total_false_negatives, False),
-        ]
-
-        for label, mv, bv, higher in int_rows:
-            table.add_row(label, str(mv), str(bv), _int_delta(mv, bv, higher))
-
-        console.print(table)
 
     def print_three_way_comparison(
         self,

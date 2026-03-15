@@ -59,8 +59,11 @@ BEHAVIORAL GUIDELINES:
 SCORING GUIDANCE:
 - Confidence 0.9–1.0: Exploit path is clear, impact is certain
 - Confidence 0.7–0.9: Likely exploitable but depends on caller context or token behaviour
-- Confidence 0.5–0.7: Pattern is suspicious and worth investigating even if path is indirect
-- Report everything confidence >= 0.5; the Defender and Judge will decide what survives"""
+- Confidence 0.6–0.7: Pattern is suspicious and the exploit path is plausible but indirect
+- Only report findings with confidence >= 0.6
+
+DEDUPLICATION RULE:
+Report at most one finding per canonical vulnerability type. If the same type appears in multiple locations (e.g., unchecked addition in transfer(), transferFrom(), and batchTransfer()), report only the single most severe and most directly exploitable instance. One strong, focused claim per type is more valuable than multiple weaker variants."""
 
 SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vulnerabilities.
 
@@ -82,7 +85,7 @@ For each vulnerability you identify, provide:
 CANONICAL TYPE LABELS (use exactly one per finding):
 {vulnerability_types}
 
-Prefer high recall — report every suspicious pattern (confidence >= 0.5) even if the full exploit path is complex or indirect. Use a lower confidence score for uncertain findings rather than omitting them. The Defender and Judge will filter false positives. Only omit a finding if existing mitigations DIRECTLY and COMPLETELY block the specific exploit you are describing.
+Report only findings with confidence >= 0.6. For each canonical type, report the single most severe and most directly exploitable instance — do not list multiple occurrences of the same type. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing.
 
 Respond with ONLY this JSON structure:
 
