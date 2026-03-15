@@ -202,19 +202,6 @@ class Evaluator:
     Supports various benchmark formats including SmartBugs.
     """
 
-    # Maps specific canonical types to broader parent categories used by some benchmarks
-    # (e.g. SmartBugs labels delegatecall storage-collision findings as "access_control").
-    # During evaluation a predicted type matches a ground-truth type if either:
-    #   - they normalise to the same canonical label, OR
-    #   - the predicted type's parent equals the ground-truth canonical label.
-    VULNERABILITY_PARENT_MAP: dict[str, str] = {
-        "delegatecall":        "access_control",  # storage-collision = unauthorised access bypass
-        "upgradeable_proxy":   "access_control",  # unprotected upgrade = unauthorised access
-        "signature_replay":    "access_control",  # replay bypasses authentication checks
-        "flash_loan":          "logic_error",     # flash-loan exploits exploit economic logic
-        "oracle_manipulation": "logic_error",     # price-oracle attacks exploit logic flaws
-    }
-
     # Mapping of vulnerability type variations to canonical names.
     # Canonical keys must match VULNERABILITY_TYPES in src/knowledge/prompts/attacker.py.
     VULNERABILITY_TYPE_MAP = {
@@ -406,28 +393,10 @@ class Evaluator:
             for gt in ground_truth.vulnerabilities
         }
 
-        # Calculate metrics
-        true_positives = 0
-        false_positives = 0
-
-        # True positives: predicted types that match a GT type directly OR via parent.
-        # e.g. predicted "delegatecall" → parent "access_control" ∈ ground_truth_types → TP.
-        for p_type in predicted_types:
-            parent = self.VULNERABILITY_PARENT_MAP.get(p_type)
-            if p_type in ground_truth_types or (parent and parent in ground_truth_types):
-                true_positives += 1
-            else:
-                false_positives += 1
-
-        # False negatives: GT types not covered by any predicted type.
-        false_negatives = 0
-        for gt_type in ground_truth_types:
-            matched = gt_type in predicted_types or any(
-                self.VULNERABILITY_PARENT_MAP.get(p) == gt_type
-                for p in predicted_types
-            )
-            if not matched:
-                false_negatives += 1
+        # Strict type matching: predicted type must equal the GT canonical label exactly.
+        true_positives = sum(1 for p in predicted_types if p in ground_truth_types)
+        false_positives = sum(1 for p in predicted_types if p not in ground_truth_types)
+        false_negatives = sum(1 for gt in ground_truth_types if gt not in predicted_types)
 
         return EvaluationResult(
             contract_path=ground_truth.contract_path,
@@ -454,6 +423,7 @@ class Evaluator:
         benchmark_dir: Path,
         ground_truth_file: Optional[Path] = None,
         trace_dir: Optional[Path] = None,
+        inter_contract_delay: float = 0.0,
     ) -> tuple[BenchmarkResult, BenchmarkResult, BenchmarkResult]:
         """
         Single-pass evaluation returning multi-agent, 2-agent, and baseline results.
@@ -570,10 +540,14 @@ class Evaluator:
 
                 debate_manager.reset_agents()
 
+                if inter_contract_delay > 0:
+                    await asyncio.sleep(inter_contract_delay)
+
             except Exception as e:
+                gt = ground_truths.get(contract_path.name) or GroundTruth(contract_path.name, [])
                 error_result = EvaluationResult(
-                    contract_path=str(contract_path),
-                    ground_truth=GroundTruth(str(contract_path), []),
+                    contract_path=contract_path.name,
+                    ground_truth=gt,
                     predicted_vulnerabilities=[],
                     error=str(e),
                 )
@@ -623,23 +597,9 @@ class Evaluator:
             for gt in ground_truth.vulnerabilities
         }
 
-        true_positives = 0
-        false_positives = 0
-        for p_type in predicted_types:
-            parent = self.VULNERABILITY_PARENT_MAP.get(p_type)
-            if p_type in ground_truth_types or (parent and parent in ground_truth_types):
-                true_positives += 1
-            else:
-                false_positives += 1
-
-        false_negatives = 0
-        for gt_type in ground_truth_types:
-            matched = gt_type in predicted_types or any(
-                self.VULNERABILITY_PARENT_MAP.get(p) == gt_type
-                for p in predicted_types
-            )
-            if not matched:
-                false_negatives += 1
+        true_positives = sum(1 for p in predicted_types if p in ground_truth_types)
+        false_positives = sum(1 for p in predicted_types if p not in ground_truth_types)
+        false_negatives = sum(1 for gt in ground_truth_types if gt not in predicted_types)
 
         return EvaluationResult(
             contract_path=ground_truth.contract_path,

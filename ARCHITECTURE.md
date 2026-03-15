@@ -188,13 +188,17 @@ All provider implementations share a common abstract interface defined in `BaseL
 
 ```
 BaseLLMProvider (abstract)
-├── complete(messages) → LLMResponse   ← main method
-└── complete_simple(prompt) → str      ← convenience wrapper
+├── complete(messages) → LLMResponse        ← main method
+├── complete_simple(prompt) → str           ← convenience wrapper
+├── _with_retry(call_fn) → Any              ← exponential backoff on 429
+└── _is_rate_limit_error(exc) → bool        ← detects 429 across all SDKs
 
 OpenAIProvider    ─── uses openai Python SDK (async)
 AnthropicProvider ─── uses anthropic Python SDK (async)
 GeminiProvider    ─── uses google-generativeai SDK (async)
 ```
+
+**Rate-limit handling** — all three providers inherit `_with_retry()` from `BaseLLMProvider`. Any API call that raises a 429 / ResourceExhausted / quota-exceeded error is automatically retried with exponential backoff: 5 s → 10 s → 20 s → 40 s → 80 s (capped at 120 s, max 5 retries). Non-rate-limit errors are re-raised immediately without retry. Gemini's async-to-sync executor fallback is preserved for environments where the async client is unavailable, but rate-limit errors are explicitly excluded from that path so they propagate to the retry wrapper correctly.
 
 **Key data structures:**
 
@@ -261,7 +265,11 @@ Low temperatures are used throughout because these are structured analytical tas
 
 #### `AttackerAgent`
 
-Role: scan the contract and raise vulnerability claims.
+Role: scan the contract and raise vulnerability claims with high precision.
+
+**Confidence threshold:** only claims with attacker confidence ≥ 0.6 are emitted. Claims below this threshold are discarded before the debate begins.
+
+**Deduplication rule:** at most one claim per canonical vulnerability type is reported — the single most severe and most directly exploitable instance. This prevents multiple weaker variants of the same class from inflating claim counts and FP rates.
 
 **Methods:**
 
@@ -291,10 +299,14 @@ Role: challenge each claim — find mitigations, invalidate false positives, ack
 
 The Defender's `analyze()` uses `include_history=False` — each claim is evaluated fresh. `respond_to_rebuttal()` uses `include_history=True` to maintain continuity across rebuttal rounds.
 
+The Defender's default posture is **skeptical**: it treats each claim as a potential false positive and looks for specific code-level reasons to reject it before acknowledging validity. Rejections must cite exact lines or mechanisms — general trust in the developer or assumed best practices are not accepted as rebuttals.
+
 The Defender can return three verdicts in its initial response:
-- `VALID_VULNERABILITY` — acknowledges the claim
-- `INVALID_CLAIM` — rejects it with evidence
+- `VALID_VULNERABILITY` — acknowledges the claim after exhausting defensive arguments
+- `INVALID_CLAIM` — rejects it with specific code evidence that blocks the exploit path
 - `PARTIALLY_MITIGATED` — confirms vulnerability exists but mitigations reduce the impact
+
+The Defender's initial-round verdict (`defender_verdict`) is recorded in `ClaimResult` and used by the 2-agent evaluator to determine whether a claim passes without judge involvement.
 
 ---
 
@@ -315,7 +327,12 @@ The Judge always uses `include_history=False` — each verdict is made on the fu
 - Normalising `"VALID_VULNERABILITY"` vs `"NOT_VULNERABLE"` strings
 - Clamping confidence to `[0.0, 1.0]` (handles cases where the model returns `85` instead of `0.85`)
 - Clamping `attacker_score` and `defender_score` similarly
-- Truncating `reasoning` to 500 chars and `recommendation` to 300 chars
+
+**Judge validation criteria** — the Judge requires all four of these to rule `VALID_VULNERABILITY`:
+1. The vulnerable code pattern is present at the cited location
+2. No existing mitigation specifically blocks this exact attack path
+3. The exploit path is physically achievable — preconditions must be realistic (inputs cannot require values exceeding total Ether supply or similar physical impossibilities)
+4. The exploit causes harm to a third party — self-inflicted loss with no impact on other users does not constitute a valid vulnerability
 
 **`_fallback_parse_verdict()`** handles the case where JSON parsing fails — uses regex to find `VERDICT:`, `SEVERITY:`, `CONFIDENCE:`, `REASONING:` etc. from plain text.
 
@@ -438,13 +455,18 @@ Note: `defender_argument` is a field in `Finding` but is currently not populated
 
 Batch runner for benchmark evaluation. Runs `DebateManager.run_debate()` on every `.sol`/`.vy`/`.rs` file in a directory and computes aggregate metrics.
 
-**`evaluate_both(benchmark_dir, ground_truth_file) → (multi, two_agent, baseline)`**
+**`evaluate_both(benchmark_dir, ground_truth_file, trace_dir, inter_contract_delay) → (multi, two_agent, baseline)`**
 
 Single-pass method that derives three `BenchmarkResult` objects from one debate run per contract:
 
 - **`_compare_results()`** — counts a claim as predicted if `verdict.is_valid = True` (Judge confirmed).
-- **`_compare_results_two_agent()`** — counts a claim as predicted if `attacker_conceded = False` (attacker held position after debate). Severity is taken from the attacker's original claim.
+- **`_compare_results_two_agent()`** — counts a claim as predicted if `defender_verdict != "INVALID_CLAIM"`. Both `VALID_VULNERABILITY` and `PARTIALLY_MITIGATED` pass; only explicit first-round rejection by the Defender filters a claim out. Severity is taken from the attacker's original claim.
 - Baseline is constructed inline: all `initial_claims` are accepted as-is.
+- `inter_contract_delay` (seconds) is awaited between contracts to avoid API rate-limit exhaustion during long benchmark runs.
+
+**Type matching** — predicted vulnerability types are matched against ground-truth labels using strict canonical equality after normalisation. No parent-type mapping is applied; a prediction of `delegatecall` does not match a ground-truth label of `access_control`. This ensures metrics reflect actual classification accuracy rather than loose semantic grouping.
+
+**Error path** — contracts that fail mid-run (e.g. due to API errors) are recorded with `contract_path = contract_path.name` (basename) so they still match ground-truth entries and are correctly counted as false negatives rather than silently dropped from evaluation.
 
 **`print_three_way_comparison(multi, two_agent, baseline)`** — renders a six-column Rich table (3-Agent | Δ | 2-Agent | Δ | Baseline) for Precision, Recall, F1 (micro and macro), and raw TP/FP/FN counts. Delta columns are colour-coded green/red.
 
@@ -570,13 +592,17 @@ defender_score: float   — Quality of Defender's argument [0, 1]
 
 ### `ClaimResult`
 ```
-claim:                      VulnerabilityClaim
-verdict:                    Verdict
-debate_rounds:              int     — actual rounds that ran
-attacker_conceded:          bool
-defender_acknowledged:      bool
+claim:                         VulnerabilityClaim
+verdict:                       Verdict
+debate_rounds:                 int     — actual rounds that ran
+attacker_conceded:             bool
+defender_acknowledged:         bool
 judge_requested_clarification: bool
-final_assessment:           str     — first 500 chars of Judge's final content
+final_assessment:              str     — Judge's final content (no length cap)
+defender_verdict:              str     — Defender's first-round verdict:
+                                        "VALID_VULNERABILITY" | "INVALID_CLAIM" |
+                                        "PARTIALLY_MITIGATED"
+                                        Used by the 2-agent evaluator as its filter signal.
 ```
 
 ### `DebateResult`
@@ -711,10 +737,18 @@ The Defender can return `VALID_VULNERABILITY` in its initial review, but this do
 The `benchmark` command compares three pipeline architectures (3-agent, 2-agent, baseline) without running extra LLM calls. All three results are computed from the single 3-agent run per contract:
 
 - **3-agent verdict** already recorded in `ClaimResult.verdict.is_valid`.
-- **2-agent verdict** uses `ClaimResult.attacker_conceded` — a field already written by the debate loop regardless of whether the Judge is conceptually present. A claim is counted as valid by the 2-agent system if the Attacker did not explicitly concede (attacker wins ties).
+- **2-agent verdict** uses `ClaimResult.defender_verdict` — the Defender's first-round response recorded regardless of whether the Judge is conceptually present. A claim is counted as valid by the 2-agent system if the Defender did not explicitly rule `INVALID_CLAIM` (ties go to the Attacker).
 - **Baseline** is reconstructed from `DebateResult.initial_claims` — the Attacker's raw output before any debate.
 
 This design means the three architectures are always evaluated on identical LLM outputs, eliminating sampling variance as a confound when comparing them.
+
+### Strict vulnerability type matching
+
+The evaluator uses exact canonical label matching: a predicted type must equal the ground-truth label after normalisation (e.g. `"reentrancy"`, `"arithmetic"`, `"unchecked_calls"`). No parent-type mapping is applied. This ensures precision and recall metrics reflect whether the system correctly classified the vulnerability, not just whether it found something in the same broad family.
+
+### Rate-limit resilience via exponential backoff
+
+All three providers inherit a shared `_with_retry()` helper from `BaseLLMProvider` that automatically retries on 429 / ResourceExhausted / quota-exceeded errors. The retry schedule is exponential (5 s → 10 s → 20 s → 40 s → 80 s) with a 120 s cap and 5 maximum attempts. Non-rate-limit errors are re-raised immediately. The `benchmark` command additionally accepts a `--delay` flag (default 5 s) that adds a proactive inter-contract pause to stay within per-minute quota limits before retries are needed.
 
 ### Web search is a run-level flag, not a per-call decision
 The `web_search` flag is set once on `DebateManager` and propagated to all three agents at construction time via `self.web_search` on `BaseAgent`. This means every LLM call across the entire debate — initial scan, rebuttals, clarifications, verdicts — either all have web search enabled or none do. A finer-grained approach (e.g. only the Attacker searches) was not implemented as the added complexity was not justified.

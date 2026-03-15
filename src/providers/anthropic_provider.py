@@ -108,7 +108,9 @@ class AnthropicProvider(BaseLLMProvider):
                 }
             }
 
-        response = await self.client.messages.create(**request_kwargs)
+        response = await self._with_retry(
+            lambda: self.client.messages.create(**request_kwargs)
+        )
 
         # Extract text from content blocks; ignore non-text blocks (e.g. web
         # search result blocks that Anthropic may include in the response)

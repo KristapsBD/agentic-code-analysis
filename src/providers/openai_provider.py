@@ -95,7 +95,9 @@ class OpenAIProvider(BaseLLMProvider):
             # json_mode is incompatible with web_search_options
             create_kwargs["response_format"] = {"type": "json_object"}
 
-        response = await self.client.chat.completions.create(**create_kwargs)
+        response = await self._with_retry(
+            lambda: self.client.chat.completions.create(**create_kwargs)
+        )
 
         choice = response.choices[0]
         usage = response.usage

@@ -169,24 +169,36 @@ class GeminiProvider(BaseLLMProvider):
         contents: list[types.Content],
         config: types.GenerateContentConfig,
     ) -> Any:
-        """Attempt async API call; fall back to sync-in-executor."""
-        try:
-            return await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=contents,
-                config=config,
-            )
-        except Exception as exc:
-            logger.debug(f"Async Gemini call failed ({exc}), retrying with executor")
-            loop = asyncio.get_event_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: self.client.models.generate_content(
+        """
+        Attempt async API call with retry on rate limits.
+
+        Rate-limit errors (429 / ResourceExhausted) are retried with exponential
+        backoff via the base-class helper. All other errors fall back to a
+        sync-in-executor call (handles environments where the async client is
+        unavailable), after which the error is re-raised if it persists.
+        """
+        async def _attempt() -> Any:
+            try:
+                return await self.client.aio.models.generate_content(
                     model=self.model,
                     contents=contents,
                     config=config,
-                ),
-            )
+                )
+            except Exception as exc:
+                if self._is_rate_limit_error(exc):
+                    raise  # let _with_retry handle it
+                logger.debug(f"Async Gemini call failed ({exc}), falling back to executor")
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(
+                    None,
+                    lambda: self.client.models.generate_content(
+                        model=self.model,
+                        contents=contents,
+                        config=config,
+                    ),
+                )
+
+        return await self._with_retry(_attempt)
 
     @staticmethod
     def _build_contents(

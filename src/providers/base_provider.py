@@ -5,9 +5,14 @@ Defines the interface that all LLM providers must implement,
 ensuring consistent behavior across different providers.
 """
 
+import asyncio
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -110,6 +115,46 @@ class BaseLLMProvider(ABC):
             messages, temperature=temperature, web_search=web_search, json_mode=json_mode
         )
         return response.content
+
+    @staticmethod
+    def _is_rate_limit_error(exc: Exception) -> bool:
+        """Detect 429 / quota-exceeded errors across all SDK types."""
+        msg = str(exc).lower()
+        return (
+            "429" in str(exc)
+            or "resource exhausted" in msg
+            or "rate limit" in msg
+            or "too many requests" in msg
+            or "quota exceeded" in msg
+            or "ratelimit" in msg
+        )
+
+    async def _with_retry(
+        self,
+        call_fn: Callable[[], Coroutine[Any, Any, Any]],
+        max_retries: int = 5,
+        base_delay: float = 5.0,
+        max_delay: float = 120.0,
+    ) -> Any:
+        """
+        Execute an async API call with exponential backoff on rate-limit errors.
+
+        Delays: 5s → 10s → 20s → 40s → 80s (capped at max_delay).
+        Non-rate-limit errors are re-raised immediately without retry.
+        """
+        for attempt in range(max_retries):
+            try:
+                return await call_fn()
+            except Exception as exc:
+                if self._is_rate_limit_error(exc) and attempt < max_retries - 1:
+                    delay = min(base_delay * (2 ** attempt), max_delay)
+                    logger.warning(
+                        f"Rate limit hit (attempt {attempt + 1}/{max_retries}), "
+                        f"retrying in {delay:.0f}s — {exc}"
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
 
     def _validate_messages(self, messages: list[Message]) -> None:
         """Validate that messages are properly formatted."""

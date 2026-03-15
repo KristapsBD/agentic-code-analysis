@@ -313,6 +313,13 @@ def benchmark(
         "-o",
         help="Output file path for combined benchmark results (JSON)",
     ),
+    delay: float = typer.Option(
+        5.0,
+        "--delay",
+        "-d",
+        help="Seconds to wait between contracts to avoid API rate limiting",
+        min=0.0,
+    ),
 ) -> None:
     """
     Compare multi-agent pipeline vs. single-prompt baseline on a benchmark dataset.
@@ -339,6 +346,7 @@ def benchmark(
     console.print(f"[cyan]Benchmark Directory:[/cyan] {benchmark_dir}")
     console.print(f"[cyan]Provider:[/cyan] {provider.value}")
     console.print(f"[cyan]Debate Rounds:[/cyan] {rounds}")
+    console.print(f"[cyan]Inter-Contract Delay:[/cyan] {delay}s")
     console.print()
 
     evaluator = Evaluator(provider=provider, max_rounds=rounds)
@@ -352,7 +360,9 @@ def benchmark(
     #   baseline: Attacker's raw initial claims, all accepted as-is
     with console.status("[bold green]Attacker → Defender → Judge debate in progress..."):
         multi_result, two_agent_result, baseline_result = asyncio.run(
-            evaluator.evaluate_both(benchmark_dir, ground_truth, trace_dir=trace_dir)
+            evaluator.evaluate_both(
+                benchmark_dir, ground_truth, trace_dir=trace_dir, inter_contract_delay=delay
+            )
         )
 
     console.print()

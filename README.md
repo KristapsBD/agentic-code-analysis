@@ -99,7 +99,7 @@ Runs the full 3-agent debate once per contract, then derives all three architect
 | Architecture | What counts as a valid finding |
 |---|---|
 | **3-agent** | Judge confirmed (`verdict.is_valid = True`) |
-| **2-agent** | Attacker did not concede after seeing the defense (`attacker_conceded = False`) |
+| **2-agent** | Defender did not explicitly reject the claim (`defender_verdict != "INVALID_CLAIM"`) |
 | **Baseline** | All initial Attacker claims, accepted as-is |
 
 ```bash
@@ -112,11 +112,13 @@ python -m src.main benchmark <BENCHMARK_DIR> [OPTIONS]
 | `--provider` | `-p` | `gemini` | LLM provider |
 | `--rounds` | `-r` | `2` | Debate rounds per claim |
 | `--output` | `-o` | auto | Combined JSON output path |
+| `--delay` | `-d` | `5.0` | Seconds to wait between contracts (avoids API rate limiting) |
 
 ```bash
 python -m src.main benchmark data/benchmarks/medium \
     --ground-truth data/benchmarks/ground_truth/medium_benchmark.json \
-    --provider gemini
+    --provider gemini \
+    --delay 5
 ```
 
 The output JSON contains three top-level keys: `"multi_agent"`, `"two_agent"`, and `"baseline"`.
