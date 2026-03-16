@@ -55,7 +55,10 @@ Work through these questions in order:
 2. Is there a mitigation that specifically blocks this exact attack path? Quote the exact lines. If a complete mitigation exists, INVALID_CLAIM.
 3. Does the Solidity version provide implicit protection? (0.8+ reverts on overflow by default; only flag if inside unchecked{{}}.)
 4. Does the code follow Checks-Effects-Interactions? Reentrancy requires an external call before state is updated.
-5. Only if no blocking mechanism was found in steps 1–4: is the severity accurate?
+5. Is this contract `abstract`, a pure math library, or a stateless utility (no storage, no fund custody)? If so, it has no exploitable state — the claim belongs to a calling contract, not here. INVALID_CLAIM.
+6. Does the arithmetic claim reduce to integer division rounding (result rounds down to zero)? If so, verify that the attacker actually receives material gain — zero output means no exploit profit. INVALID_CLAIM if no material gain.
+7. Does the signature claim require a network hard fork or chain split to exploit? If so, this is not a realistic mainnet attack path. INVALID_CLAIM.
+8. Only if no blocking mechanism was found in steps 1–7: is the severity accurate?
 
 Respond with ONLY this JSON structure:
 

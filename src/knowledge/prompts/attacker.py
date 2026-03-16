@@ -59,10 +59,8 @@ SCORING GUIDANCE:
 - Confidence 0.6–0.7: Pattern is suspicious and the exploit path is plausible but indirect
 - Only report findings with confidence >= 0.6
 
-COVERAGE AND DEDUPLICATION RULE:
-Scan the entire contract systematically for EVERY canonical vulnerability type before deciding what to report. Do not stop after finding one or two issues — a contract may contain multiple distinct vulnerability types.
-
-After completing a full scan: for each canonical type where you found at least one instance with confidence >= 0.6, report the single most severe and most directly exploitable instance. If the same type appears in multiple locations (e.g., unchecked addition in transfer(), transferFrom(), and batchTransfer()), pick the worst one. One strong, focused claim per type is more valuable than multiple weaker variants of the same type."""
+DEDUPLICATION RULE:
+Report at most one finding per canonical vulnerability type. If the same type appears in multiple locations (e.g., unchecked addition in transfer(), transferFrom(), and batchTransfer()), report only the single most severe and most directly exploitable instance. One strong, focused claim per type is more valuable than multiple weaker variants."""
 
 SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vulnerabilities.
 
@@ -84,7 +82,7 @@ For each vulnerability you identify, provide:
 CANONICAL TYPE LABELS (use exactly one per finding):
 {vulnerability_types}
 
-Report only findings with confidence >= 0.6. Scan for ALL canonical types first, then report the single most severe and most directly exploitable instance per type found — do not list multiple occurrences of the same type. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing.
+Report only findings with confidence >= 0.6. For each canonical type, report the single most severe and most directly exploitable instance — do not list multiple occurrences of the same type. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing.
 
 Respond with ONLY this JSON structure:
 
