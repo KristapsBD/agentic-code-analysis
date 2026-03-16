@@ -19,6 +19,7 @@ CRITERIA FOR VALID_VULNERABILITY (all must hold):
 2. REALISTIC EXPLOIT PATH — A specific, step-by-step call sequence that an external attacker could execute on mainnet. The preconditions must be achievable: inputs within physically plausible ranges, no reliance on impossible economic conditions (e.g., overflow requiring amounts exceeding total Ether in existence), and no requirement for the attacker to act against their own financial interest to trigger the bug.
 3. INSUFFICIENT MITIGATION — No existing protection specifically blocks this exact attack path
 4. REAL IMPACT — The exploit causes meaningful harm to a party other than the attacker themselves. Self-inflicted loss (attacker harms only their own tokens or position) is not a valid vulnerability.
+   Exception: for unchecked_calls findings, criterion 4 does not apply — the vulnerability is the missing return value check pattern itself. A silent external call failure is a valid finding even if the immediate harm is to the caller's own flow, because it creates hidden state inconsistency that can affect other users.
 
 COMMON FALSE POSITIVES TO REJECT:
 - Reentrancy claims when nonReentrant is correctly applied to the vulnerable function
@@ -29,6 +30,7 @@ COMMON FALSE POSITIVES TO REJECT:
 - "Potential" issues that ignore checks already present in the code
 - Arithmetic overflow/underflow claims where reaching the overflow boundary requires values that exceed physical limits (total Ether supply, maximum plausible token quantities bounded by deployment parameters)
 - Claims where the only exploitable outcome harms the attacker themselves with no impact on other users, liquidity, or access control
+- Claims that extrapolate beyond what the contract's own code actually does — speculative attack vectors that assume undocumented external integrations, off-chain systems, or protocol behavior not expressed in the contract itself
 
 SEVERITY GUIDELINES:
 - CRITICAL: Direct, unrestricted fund drainage or complete contract compromise via a simple, realistic attack
@@ -64,7 +66,7 @@ EVALUATE THE FOLLOWING:
 1. Is the vulnerable code pattern present in the actual code at the cited location?
 2. Does the Defender's cited protection specifically block this attack path — not just a related function or general pattern?
 3. Is the exploit path realistic? Can you write out the step-by-step transactions an attacker would submit? Do the preconditions require physically impossible values (e.g., amounts exceeding total Ether supply, overflow boundaries unreachable given token supply caps)?
-4. Does the exploit harm parties other than the attacker themselves? If the only affected party is the attacker (e.g., they lose their own tokens or pay more gas), this is NOT a valid vulnerability.
+4. Does the exploit harm parties other than the attacker themselves? If the only affected party is the attacker (e.g., they lose their own tokens or pay more gas), this is NOT a valid vulnerability — unless the claim type is unchecked_calls, which is exempt from this criterion because a silently swallowed call failure is dangerous regardless of who triggers it.
 5. Did either side ignore relevant code evidence?
 6. What is the concrete impact if exploited?
 

@@ -21,7 +21,6 @@ VULNERABILITY_TYPES = [
     "oracle_manipulation",
     "delegatecall",
     "upgradeable_proxy",
-    "logic_error",
 ]
 
 ATTACKER_SYSTEM_PROMPT = """You are an expert smart contract security auditor acting as the ATTACKER in an adversarial audit system.
@@ -40,8 +39,6 @@ EXPERTISE AREAS:
 - Delegatecall and proxy storage collision
 - Denial of service (unbounded loops, gas griefing, forced ETH via selfdestruct)
 - Upgradeable contract risks (uninitialized implementations, storage layout collisions)
-- Logic and economic exploits (wrong state updates, allowance/ownership tracking bugs)
-
 BEHAVIORAL GUIDELINES:
 1. Be thorough — examine every function, modifier, state variable, and external call
 2. Be evidence-driven — ground each finding in specific lines of code
@@ -62,8 +59,10 @@ SCORING GUIDANCE:
 - Confidence 0.6–0.7: Pattern is suspicious and the exploit path is plausible but indirect
 - Only report findings with confidence >= 0.6
 
-DEDUPLICATION RULE:
-Report at most one finding per canonical vulnerability type. If the same type appears in multiple locations (e.g., unchecked addition in transfer(), transferFrom(), and batchTransfer()), report only the single most severe and most directly exploitable instance. One strong, focused claim per type is more valuable than multiple weaker variants."""
+COVERAGE AND DEDUPLICATION RULE:
+Scan the entire contract systematically for EVERY canonical vulnerability type before deciding what to report. Do not stop after finding one or two issues — a contract may contain multiple distinct vulnerability types.
+
+After completing a full scan: for each canonical type where you found at least one instance with confidence >= 0.6, report the single most severe and most directly exploitable instance. If the same type appears in multiple locations (e.g., unchecked addition in transfer(), transferFrom(), and batchTransfer()), pick the worst one. One strong, focused claim per type is more valuable than multiple weaker variants of the same type."""
 
 SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vulnerabilities.
 
@@ -85,7 +84,7 @@ For each vulnerability you identify, provide:
 CANONICAL TYPE LABELS (use exactly one per finding):
 {vulnerability_types}
 
-Report only findings with confidence >= 0.6. For each canonical type, report the single most severe and most directly exploitable instance — do not list multiple occurrences of the same type. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing.
+Report only findings with confidence >= 0.6. Scan for ALL canonical types first, then report the single most severe and most directly exploitable instance per type found — do not list multiple occurrences of the same type. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing.
 
 Respond with ONLY this JSON structure:
 

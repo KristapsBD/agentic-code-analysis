@@ -76,6 +76,18 @@ class EvaluationResult:
             return 0.0
         return 2 * (p * r) / (p + r)
 
+    @property
+    def binary_predicted_vulnerable(self) -> bool:
+        """True if the system predicted at least one vulnerability."""
+        return len(self.predicted_vulnerabilities) > 0
+
+    @property
+    def binary_correct(self) -> bool:
+        """True if binary vulnerable/clean prediction matches ground truth."""
+        if self.error:
+            return False
+        return self.binary_predicted_vulnerable == self.ground_truth.has_vulnerabilities
+
     def to_dict(self) -> dict:
         """Convert to dictionary format."""
         return {
@@ -86,6 +98,8 @@ class EvaluationResult:
             "precision": self.precision,
             "recall": self.recall,
             "f1_score": self.f1_score,
+            "binary_predicted_vulnerable": self.binary_predicted_vulnerable,
+            "binary_correct": self.binary_correct,
             "analysis_time_seconds": self.analysis_time_seconds,
             "error": self.error,
         }
@@ -165,6 +179,20 @@ class BenchmarkResult:
             return 0.0
         return 2 * (p * r) / (p + r)
 
+    @property
+    def binary_accuracy(self) -> float:
+        """
+        Contract-level binary classification accuracy.
+
+        For each contract: did the system correctly predict "vulnerable" vs "clean"?
+        A system predicts "vulnerable" if it found at least one valid vulnerability.
+        Contracts that failed analysis (error is set) are counted as incorrect.
+        """
+        if not self.contract_results:
+            return 0.0
+        correct = sum(1 for r in self.contract_results if r.binary_correct)
+        return correct / len(self.contract_results)
+
     def to_dict(self) -> dict:
         """Convert to dictionary format."""
         return {
@@ -183,6 +211,7 @@ class BenchmarkResult:
                 "micro_precision": self.micro_precision,
                 "micro_recall": self.micro_recall,
                 "micro_f1": self.micro_f1,
+                "binary_accuracy": self.binary_accuracy,
             },
             "totals": {
                 "true_positives": self.total_true_positives,
@@ -218,7 +247,6 @@ class Evaluator:
         "oracle_manipulation": ["oracle", "price_manipulation", "twap", "spot_price"],
         "delegatecall": ["delegatecall", "delegate_call", "storage_collision", "proxy_collision"],
         "upgradeable_proxy": ["upgradeable", "upgradable", "uninitialized_impl", "storage_layout"],
-        "logic_error": ["logic_error", "logic-error", "business_logic", "economic_exploit", "allowance_bug"],
     }
 
     def __init__(
@@ -661,6 +689,7 @@ class Evaluator:
             return f"[{color}]{sign}{diff}[/{color}]"
 
         float_rows = [
+            ("Binary Accuracy", multi.binary_accuracy, two_agent.binary_accuracy, baseline.binary_accuracy, True),
             ("Micro Precision", multi.micro_precision, two_agent.micro_precision, baseline.micro_precision, True),
             ("Micro Recall",    multi.micro_recall,    two_agent.micro_recall,    baseline.micro_recall,    True),
             ("Micro F1",        multi.micro_f1,        two_agent.micro_f1,        baseline.micro_f1,        True),
@@ -716,6 +745,8 @@ class Evaluator:
         summary.add_row("True Positives", str(result.total_true_positives))
         summary.add_row("False Positives", str(result.total_false_positives))
         summary.add_row("False Negatives", str(result.total_false_negatives))
+        summary.add_row("", "")
+        summary.add_row("Binary Accuracy", f"{result.binary_accuracy:.2%}")
         summary.add_row("", "")
         summary.add_row("Micro Precision", f"{result.micro_precision:.2%}")
         summary.add_row("Micro Recall", f"{result.micro_recall:.2%}")
