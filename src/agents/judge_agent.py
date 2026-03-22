@@ -7,6 +7,7 @@ a single clarification round from both sides when confidence is low.
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -105,10 +106,7 @@ class JudgeAgent(BaseAgent):
         defender_arg = context.get("defender_argument", "")
         debate_history = context.get("debate_history", [])
 
-        if isinstance(claim, VulnerabilityClaim):
-            claim_dict = claim.to_dict()
-        else:
-            claim_dict = claim
+        claim_dict = self._to_claim_dict(claim)
 
         # Format debate history if available
         debate_summary = ""
@@ -182,10 +180,7 @@ class JudgeAgent(BaseAgent):
         attacker_argument = context.get("attacker_argument", "")
         defender_argument = context.get("defender_argument", "")
 
-        if isinstance(claim, VulnerabilityClaim):
-            claim_dict = claim.to_dict()
-        else:
-            claim_dict = claim
+        claim_dict = self._to_claim_dict(claim)
 
         prompt = CLARIFICATION_PROMPT_TEMPLATE.format(
             contract_code=contract_code,
@@ -257,31 +252,9 @@ class JudgeAgent(BaseAgent):
         if isinstance(severity, str):
             severity = severity.lower()
 
-        # Extract confidence
-        confidence = 0.5
-        try:
-            confidence = float(parsed.get("confidence", 0.5))
-            if confidence > 1:
-                confidence = confidence / 100
-            confidence = max(0.0, min(1.0, confidence))
-        except (ValueError, TypeError):
-            pass
-
-        # Extract scores
-        attacker_score = 0.5
-        defender_score = 0.5
-        try:
-            attacker_score = float(parsed.get("attacker_score", 0.5))
-            if attacker_score > 1:
-                attacker_score = attacker_score / 100
-        except (ValueError, TypeError):
-            pass
-        try:
-            defender_score = float(parsed.get("defender_score", 0.5))
-            if defender_score > 1:
-                defender_score = defender_score / 100
-        except (ValueError, TypeError):
-            pass
+        confidence = self._normalize_confidence(parsed.get("confidence"))
+        attacker_score = self._normalize_confidence(parsed.get("attacker_score"))
+        defender_score = self._normalize_confidence(parsed.get("defender_score"))
 
         return Verdict(
             claim_id=claim_id,
@@ -307,8 +280,6 @@ class JudgeAgent(BaseAgent):
         Returns:
             Verdict object with best-effort extraction
         """
-        import re
-
         response_upper = raw_content.upper()
 
         # Determine validity

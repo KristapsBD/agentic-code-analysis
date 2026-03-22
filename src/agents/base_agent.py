@@ -7,6 +7,7 @@ for Attacker, Defender, and Judge agents.
 
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -134,13 +135,6 @@ class BaseAgent(ABC):
                 f"temperature={temperature}, web_search={self.web_search}, "
                 f"json_mode={json_mode})"
             )
-            # _SEP = "─" * 60
-            # for i, msg in enumerate(messages):
-            #     logger.debug(
-            #         f"[{self.name}] Message[{i}] role={msg.role!r} ({len(msg.content)} chars):\n"
-            #         f"{_SEP}\n{msg.content}\n{_SEP}"
-            #     )
-
         response = await self.provider.complete(
             messages, temperature=temperature, web_search=self.web_search, json_mode=json_mode
         )
@@ -237,16 +231,15 @@ class BaseAgent(ABC):
             pass
 
         # Try extracting from markdown code blocks
-        import re
         json_pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
-        matches = re.findall(json_pattern, response)
-        for match in matches:
+        match = re.search(json_pattern, response)
+        if match:
             try:
-                result = json.loads(match.strip())
+                result = json.loads(match.group(1).strip())
                 logger.debug("JSON parse strategy: markdown code block extraction succeeded")
                 return result
             except json.JSONDecodeError:
-                continue
+                pass
 
         # Try finding a JSON object in the text
         brace_start = response.find("{")
@@ -262,6 +255,22 @@ class BaseAgent(ABC):
         # Fallback: wrap raw content
         logger.warning("JSON parse strategy: all strategies failed — using raw_content fallback")
         return {"raw_content": response, "_parse_failed": True}
+
+    @staticmethod
+    def _normalize_confidence(value: Any, default: float = 0.5) -> float:
+        """Normalize a confidence value to the [0, 1] range."""
+        try:
+            conf = float(value) if value is not None else default
+            if conf > 1:
+                conf = conf / 100
+            return max(0.0, min(1.0, conf))
+        except (ValueError, TypeError):
+            return default
+
+    @staticmethod
+    def _to_claim_dict(claim: Any) -> dict:
+        """Convert a VulnerabilityClaim or dict to a plain dict."""
+        return claim.to_dict() if isinstance(claim, VulnerabilityClaim) else claim
 
     def clear_history(self) -> None:
         """Clear the conversation history."""

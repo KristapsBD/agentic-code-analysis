@@ -55,19 +55,14 @@ class DefenderAgent(BaseAgent):
             context: Dictionary containing:
                 - contract_code: The smart contract source code
                 - claim: The VulnerabilityClaim to review
-                - contract_path: Path to the contract file (optional)
 
         Returns:
             AgentResponse containing the defense argument
         """
         contract_code = context.get("contract_code", "")
         claim = context.get("claim")
-        contract_path = context.get("contract_path", "unknown")
 
-        if isinstance(claim, VulnerabilityClaim):
-            claim_dict = claim.to_dict()
-        else:
-            claim_dict = claim
+        claim_dict = self._to_claim_dict(claim)
 
         prompt = DEFENSE_PROMPT_TEMPLATE.format(
             contract_code=contract_code,
@@ -95,11 +90,9 @@ class DefenderAgent(BaseAgent):
             metadata={
                 "claim_id": claim_dict.get("id", "unknown"),
                 "defense_verdict": defense_verdict,
-                "defense_confidence": confidence,
                 "mitigations_found": parsed.get("mitigations_found", []),
                 "recommended_severity": parsed.get("recommended_severity", ""),
                 "evidence": parsed.get("evidence", ""),
-                "contract_path": contract_path,
             },
         )
 

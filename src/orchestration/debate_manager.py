@@ -15,6 +15,7 @@ Pipeline flow:
 3. Compile report
 """
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -249,8 +250,6 @@ class DebateManager:
         logger.debug(f"Sending contract to Attacker Agent (length: {len(contract_code)} chars)")
         attacker_response = await self.attacker.analyze({
             "contract_code": contract_code,
-            "contract_path": contract_path,
-            "language": result.contract_language,
         })
         logger.debug(f"Attacker response received: {attacker_response.tokens_used} tokens")
 
@@ -557,11 +556,18 @@ class DebateManager:
         if self.verbose:
             self.console.print(f"  [dim]Judge asks: {clarification_question[:100]}...[/dim]")
 
-        # Get Attacker's response to the clarification
-        attacker_clarification = await self.attacker.respond_to_clarification({
-            "original_claim": claim.to_dict(),
-            "judge_question": clarification_question,
-        })
+        # Get both sides' responses to the clarification concurrently
+        claim_dict = claim.to_dict()
+        attacker_clarification, defender_clarification = await asyncio.gather(
+            self.attacker.respond_to_clarification({
+                "original_claim": claim_dict,
+                "judge_question": clarification_question,
+            }),
+            self.defender.respond_to_clarification({
+                "original_claim": claim_dict,
+                "judge_question": clarification_question,
+            }),
+        )
 
         conversation.add_turn(
             TurnType.CLARIFICATION_RESPONSE,
@@ -569,13 +575,6 @@ class DebateManager:
             attacker_clarification.content,
             claim_id=claim.id,
         )
-
-        # Get Defender's response to the clarification
-        defender_clarification = await self.defender.respond_to_clarification({
-            "original_claim": claim.to_dict(),
-            "judge_question": clarification_question,
-        })
-
         conversation.add_turn(
             TurnType.CLARIFICATION_RESPONSE,
             self.defender.name,

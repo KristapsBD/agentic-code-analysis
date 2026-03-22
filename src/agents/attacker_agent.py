@@ -54,19 +54,13 @@ class AttackerAgent(BaseAgent):
         Args:
             context: Dictionary containing:
                 - contract_code: The smart contract source code
-                - contract_path: Path to the contract file
-                - language: Detected programming language (optional)
 
         Returns:
             AgentResponse containing vulnerability claims
         """
         contract_code = context.get("contract_code", "")
-        contract_path = context.get("contract_path", "unknown")
-        language = context.get("language", "solidity")
 
         prompt = SCAN_PROMPT_TEMPLATE.format(
-            contract_path=contract_path,
-            language=language,
             contract_code=contract_code,
             vulnerability_types=", ".join(VULNERABILITY_TYPES),
         )
@@ -83,8 +77,6 @@ class AttackerAgent(BaseAgent):
             reasoning="Initial vulnerability scan completed",
             confidence=0.7,
             metadata={
-                "contract_path": contract_path,
-                "language": language,
                 "scan_type": "initial",
             },
         )
@@ -121,7 +113,7 @@ class AttackerAgent(BaseAgent):
         # Determine if this is a rebuttal or concession from structured output
         verdict = parsed.get("verdict", "REBUTTAL").upper()
         is_concession = "CONCEDE" in verdict
-        confidence = float(parsed.get("confidence", 0.7))
+        confidence = self._normalize_confidence(parsed.get("confidence"), default=0.7)
 
         return AgentResponse(
             agent_role=self.role,
@@ -160,7 +152,7 @@ class AttackerAgent(BaseAgent):
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
 
-        confidence = float(parsed.get("confidence", 0.7))
+        confidence = self._normalize_confidence(parsed.get("confidence"), default=0.7)
 
         return AgentResponse(
             agent_role=self.role,

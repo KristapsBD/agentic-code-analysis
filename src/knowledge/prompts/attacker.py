@@ -64,9 +64,6 @@ Report at most one finding per canonical vulnerability type. If the same type ap
 
 SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vulnerabilities.
 
-CONTRACT: {contract_path}
-LANGUAGE: {language}
-
 ```
 {contract_code}
 ```
