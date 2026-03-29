@@ -59,8 +59,8 @@ TEMP_CLARIFICATION=0.2           # Factual clarification responses
 TEMP_JUDGE=0.2                   # Judge verdict rendering
 
 # Judge confidence threshold — below this the judge may request one clarification round
-# Note: also hardcoded in src/knowledge/prompts/judge.py; change both together
-JUDGE_CONFIDENCE_THRESHOLD=0.7
+# LOW = only trigger clarification when judge is genuinely uncertain; MEDIUM = more rounds
+JUDGE_CLARIFICATION_TRIGGER=LOW
 ```
 
 ### Provider comparison

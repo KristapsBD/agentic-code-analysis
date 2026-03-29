@@ -15,7 +15,7 @@ from src.knowledge.prompts.defender import (
     DEFENSE_PROMPT_TEMPLATE,
     REBUTTAL_RESPONSE_PROMPT_TEMPLATE,
 )
-from src.config import settings
+from src.config import ConfidenceLevel, settings
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
@@ -72,14 +72,14 @@ class DefenderAgent(BaseAgent):
             location=claim_dict.get("location", "Unknown"),
             description=claim_dict.get("description", "No description"),
             evidence=claim_dict.get("evidence", "No evidence provided"),
-            attacker_confidence=claim_dict.get("confidence", 0.5),
+            attacker_confidence=claim_dict.get("confidence", ConfidenceLevel.MEDIUM.value),
         )
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_debate)
 
         # Extract structured defense data
         defense_verdict = parsed.get("verdict", "unknown")
-        confidence = float(parsed.get("confidence", 0.5))
+        confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.MEDIUM)
         defense_text = parsed.get("defense", str(parsed))
 
         return AgentResponse(
@@ -127,7 +127,7 @@ class DefenderAgent(BaseAgent):
         # Determine verdict from structured output
         verdict = parsed.get("verdict", "MAINTAIN_DEFENSE").upper()
         acknowledges_vuln = "ACKNOWLEDGE" in verdict
-        confidence = float(parsed.get("confidence", 0.5))
+        confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.MEDIUM)
 
         return AgentResponse(
             agent_role=self.role,
@@ -166,7 +166,7 @@ class DefenderAgent(BaseAgent):
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_clarification)
 
-        confidence = float(parsed.get("confidence", 0.5))
+        confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.MEDIUM)
 
         return AgentResponse(
             agent_role=self.role,

@@ -11,6 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from src.config import ConfidenceLevel
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -24,7 +26,7 @@ class Finding:
     severity: str
     location: str
     description: str
-    confidence: float
+    confidence: ConfidenceLevel
     recommendation: str
     attacker_evidence: str = ""
     defender_argument: str = ""
@@ -37,7 +39,7 @@ class Finding:
             "severity": self.severity,
             "location": self.location,
             "description": self.description,
-            "confidence": self.confidence,
+            "confidence": self.confidence.value,
             "recommendation": self.recommendation,
             "attacker_evidence": self.attacker_evidence,
             "defender_argument": self.defender_argument,
@@ -150,7 +152,7 @@ class ReportGenerator:
                     severity=verdict.get("severity", "medium"),
                     location=claim.get("location", "Unknown"),
                     description=claim.get("description", ""),
-                    confidence=verdict.get("confidence", 0.5),
+                    confidence=ConfidenceLevel(str(verdict.get("confidence", "MEDIUM")).upper()),
                     recommendation=verdict.get("recommendation", "Review and address"),
                     attacker_evidence=claim.get("evidence", ""),
                     judge_reasoning=verdict.get("reasoning", ""),
@@ -223,7 +225,7 @@ class ReportGenerator:
                 table.add_row("Type", finding.vulnerability_type)
                 table.add_row("Severity", f"[{severity_style}]{finding.severity.upper()}[/{severity_style}]")
                 table.add_row("Location", finding.location)
-                table.add_row("Confidence", f"{finding.confidence:.0%}")
+                table.add_row("Confidence", finding.confidence.value)
                 table.add_row("Description", finding.description[:200] + "..." if len(finding.description) > 200 else finding.description)
 
                 console.print(Panel(
@@ -295,7 +297,7 @@ class ReportGenerator:
                     f"",
                     f"- **Severity:** {finding.severity.upper()}",
                     f"- **Location:** `{finding.location}`",
-                    f"- **Confidence:** {finding.confidence:.0%}",
+                    f"- **Confidence:** {finding.confidence.value}",
                     f"",
                     f"**Description:**",
                     f"",

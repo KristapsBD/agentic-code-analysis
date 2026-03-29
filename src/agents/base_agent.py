@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
+from src.config import ConfidenceLevel
 from src.providers.base_provider import BaseLLMProvider, Message
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class VulnerabilityClaim:
     location: str  # Function name, line number, or code snippet
     description: str
     evidence: str  # Code snippet or reasoning
-    confidence: float  # 0.0 to 1.0
+    confidence: ConfidenceLevel
 
     def to_dict(self) -> dict:
         """Convert to dictionary format."""
@@ -47,7 +48,7 @@ class VulnerabilityClaim:
             "location": self.location,
             "description": self.description,
             "evidence": self.evidence,
-            "confidence": self.confidence,
+            "confidence": self.confidence.value,
         }
 
 
@@ -59,7 +60,7 @@ class AgentResponse:
     content: str
     claims: list[VulnerabilityClaim] = field(default_factory=list)
     reasoning: str = ""
-    confidence: float = 0.5
+    confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM
     tokens_used: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -70,7 +71,7 @@ class AgentResponse:
             "content": self.content,
             "claims": [claim.to_dict() for claim in self.claims],
             "reasoning": self.reasoning,
-            "confidence": self.confidence,
+            "confidence": self.confidence.value,
             "tokens_used": self.tokens_used,
             "metadata": self.metadata,
         }
@@ -257,8 +258,22 @@ class BaseAgent(ABC):
         return {"raw_content": response, "_parse_failed": True}
 
     @staticmethod
+    def _parse_confidence_level(
+        value: Any, default: ConfidenceLevel = ConfidenceLevel.MEDIUM
+    ) -> ConfidenceLevel:
+        """Parse a value into a ConfidenceLevel enum member."""
+        if value is None:
+            return default
+        if isinstance(value, ConfidenceLevel):
+            return value
+        try:
+            return ConfidenceLevel(str(value).strip().upper())
+        except ValueError:
+            return default
+
+    @staticmethod
     def _normalize_confidence(value: Any, default: float = 0.5) -> float:
-        """Normalize a confidence value to the [0, 1] range."""
+        """Normalize a numeric score to the [0, 1] range (used for attacker/defender scores)."""
         try:
             conf = float(value) if value is not None else default
             if conf > 1:

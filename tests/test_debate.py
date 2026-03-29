@@ -10,6 +10,7 @@ from src.orchestration.conversation import Conversation, ConversationTurn, TurnT
 from src.orchestration.debate_manager import DebateManager, DebateResult, ClaimResult
 from src.agents.base_agent import AgentResponse, AgentRole, VulnerabilityClaim
 from src.agents.judge_agent import Verdict
+from src.config import ConfidenceLevel
 
 
 class TestConversationTurn:
@@ -47,13 +48,13 @@ class TestDebateResult:
             location="test()",
             description="Test",
             evidence="Test",
-            confidence=0.9,
+            confidence=ConfidenceLevel.HIGH,
         )
         verdict = Verdict(
             claim_id="test-1",
             is_valid=True,
             severity="high",
-            confidence=0.9,
+            confidence=ConfidenceLevel.HIGH,
             reasoning="Test",
             recommendation="Fix",
             attacker_score=0.8,
@@ -78,7 +79,7 @@ class TestDebateManager:
         provider = MagicMock()
         provider.provider_name = "test"
         provider.model = "test-model"
-        return DebateManager(provider=provider, max_rounds=2, judge_confidence_threshold=0.7, verbose=False)
+        return DebateManager(provider=provider, max_rounds=2, judge_clarification_trigger=ConfidenceLevel.LOW, verbose=False)
 
     @pytest.mark.asyncio
     async def test_run_debate_no_vulnerabilities(self, debate_manager):
@@ -95,13 +96,13 @@ class TestDebateManager:
         assert len(debate_manager.attacker.conversation_history) == 0
 
     def test_has_converged_attacker_low(self):
-        assert DebateManager._has_converged(0.3, 0.5) is True
+        assert DebateManager._has_converged(ConfidenceLevel.LOW, ConfidenceLevel.MEDIUM) is True
 
     def test_has_converged_defender_high(self):
-        assert DebateManager._has_converged(0.7, 0.85) is True
+        assert DebateManager._has_converged(ConfidenceLevel.MEDIUM, ConfidenceLevel.HIGH) is True
 
     def test_no_convergence(self):
-        assert DebateManager._has_converged(0.6, 0.6) is False
+        assert DebateManager._has_converged(ConfidenceLevel.MEDIUM, ConfidenceLevel.MEDIUM) is False
 
 
 class TestDebateResultConversation:
@@ -142,10 +143,10 @@ class TestClaimResult:
     def base_claim_result(self):
         claim = VulnerabilityClaim(
             id="test-1", vulnerability_type="Test", severity="high",
-            location="test()", description="Test", evidence="Test", confidence=0.9,
+            location="test()", description="Test", evidence="Test", confidence=ConfidenceLevel.HIGH,
         )
         verdict = Verdict(
-            claim_id="test-1", is_valid=True, severity="high", confidence=0.9,
+            claim_id="test-1", is_valid=True, severity="high", confidence=ConfidenceLevel.HIGH,
             reasoning="Test", recommendation="Fix", attacker_score=0.8, defender_score=0.3,
         )
         return claim, verdict

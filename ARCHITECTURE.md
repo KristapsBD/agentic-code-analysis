@@ -176,7 +176,7 @@ settings = Settings()  # populated from env vars at import time
 | Debate round temperature | `TEMP_DEBATE` | `0.3` |
 | Clarification temperature | `TEMP_CLARIFICATION` | `0.2` |
 | Judge temperature | `TEMP_JUDGE` | `0.2` |
-| Judge threshold | `JUDGE_CONFIDENCE_THRESHOLD` | `0.7` |
+| Judge clarification trigger | `JUDGE_CLARIFICATION_TRIGGER` | `LOW` |
 | Log level | `LOG_LEVEL` | `INFO` |
 
 The `LLMProvider` enum (`openai`, `anthropic`, `gemini`) is used across the codebase to identify providers without string literals.
@@ -359,7 +359,7 @@ The central controller. It owns the three agent instances and drives the full pi
 |-----------|---------|-------------|
 | `provider` | — | Shared `BaseLLMProvider` for all three agents |
 | `max_rounds` | `2` | Maximum debate rounds per claim |
-| `judge_confidence_threshold` | `0.7` | Confidence below which the Judge requests clarification |
+| `judge_clarification_trigger` | `LOW` | Maximum confidence level at which the Judge may request clarification |
 | `verbose` | `False` | Print each turn to console |
 | `web_search` | `False` | Enable built-in web search on every agent LLM call (Anthropic + Gemini only) |
 
@@ -728,7 +728,7 @@ All agents are instructed to produce JSON. `_send_message_json()` tries three ex
 ### The Judge's clarification is gated by two conditions
 The clarification round only fires if **both** conditions hold:
 1. The Judge's response sets `needs_clarification: true`
-2. The Judge's `confidence < judge_confidence_threshold` (default 0.7)
+2. The Judge's `confidence <= judge_clarification_trigger` (default `LOW`)
 
 This dual gate prevents the Judge from requesting unnecessary clarification on clear-cut cases where it marked `needs_clarification` out of caution but is actually fairly confident.
 

@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 from src.agents.base_agent import AgentRole, VulnerabilityClaim, AgentResponse
+from src.config import ConfidenceLevel
 from src.agents.attacker_agent import AttackerAgent
 from src.agents.defender_agent import DefenderAgent
 from src.agents.judge_agent import JudgeAgent, Verdict
@@ -22,12 +23,12 @@ class TestVulnerabilityClaim:
             location="withdraw()",
             description="Test",
             evidence="Test evidence",
-            confidence=0.8,
+            confidence=ConfidenceLevel.HIGH,
         )
         result = claim.to_dict()
         assert result["id"] == "test-1"
         assert result["vulnerability_type"] == "Reentrancy"
-        assert result["confidence"] == 0.8
+        assert result["confidence"] == "HIGH"
 
 
 class TestAttackerAgent:
@@ -56,19 +57,19 @@ class TestAttackerAgent:
         assert len(response.claims) >= 1
 
     def test_extract_claims_from_json(self, attacker):
-        parsed = {"vulnerabilities": [{"type": "Reentrancy", "severity": "high", "location": "withdraw()", "description": "Vulnerable", "evidence": "call before state update", "confidence": 0.85}]}
+        parsed = {"vulnerabilities": [{"type": "Reentrancy", "severity": "high", "location": "withdraw()", "description": "Vulnerable", "evidence": "call before state update", "confidence": "HIGH"}]}
         claims = attacker._extract_claims(parsed)
         assert len(claims) == 1
         assert claims[0].vulnerability_type == "Reentrancy"
 
     def test_fallback_parse_claims(self, attacker):
-        raw = "\nVULNERABILITY: Integer Overflow\nSEVERITY: medium\nLOCATION: add() function\nDESCRIPTION: Unchecked arithmetic\nCONFIDENCE: 0.7\n"
+        raw = "\nVULNERABILITY: Integer Overflow\nSEVERITY: medium\nLOCATION: add() function\nDESCRIPTION: Unchecked arithmetic\nCONFIDENCE: MEDIUM\n"
         claims = attacker._fallback_parse_claims(raw)
         assert len(claims) == 1
         assert claims[0]["vulnerability_type"] == "Integer Overflow"
 
     def test_extract_claims_fallback_path(self, attacker):
-        parsed = {"raw_content": "VULNERABILITY: Test\nSEVERITY: high\nLOCATION: test()\nDESCRIPTION: Test vuln\nCONFIDENCE: 0.8", "_parse_failed": True}
+        parsed = {"raw_content": "VULNERABILITY: Test\nSEVERITY: high\nLOCATION: test()\nDESCRIPTION: Test vuln\nCONFIDENCE: HIGH", "_parse_failed": True}
         claims = attacker._extract_claims(parsed)
         assert len(claims) == 1
         assert claims[0].vulnerability_type == "Test"
@@ -91,7 +92,7 @@ class TestDefenderAgent:
             tokens_used=100,
         )
         defender.provider.complete = AsyncMock(return_value=mock_response)
-        claim = VulnerabilityClaim(id="test-1", vulnerability_type="Reentrancy", severity="high", location="withdraw()", description="Test", evidence="Test", confidence=0.8)
+        claim = VulnerabilityClaim(id="test-1", vulnerability_type="Reentrancy", severity="high", location="withdraw()", description="Test", evidence="Test", confidence=ConfidenceLevel.HIGH)
         response = await defender.analyze({"contract_code": "contract Test {}", "claim": claim})
         assert response.agent_role == AgentRole.DEFENDER
         assert "INVALID_CLAIM" in response.reasoning
@@ -107,26 +108,26 @@ class TestJudgeAgent:
         return JudgeAgent(provider)
 
     def test_extract_verdict_valid(self, judge):
-        parsed = {"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": 0.85, "reasoning": "Confirmed.", "recommendation": "Add guard.", "attacker_score": 0.9, "defender_score": 0.4}
+        parsed = {"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": "HIGH", "reasoning": "Confirmed.", "recommendation": "Add guard.", "attacker_score": 0.9, "defender_score": 0.4}
         verdict = judge._extract_verdict(parsed, "test-claim")
         assert verdict.is_valid is True
         assert verdict.severity == "high"
-        assert verdict.confidence == 0.85
+        assert verdict.confidence == ConfidenceLevel.HIGH
 
     def test_extract_verdict_not_vulnerable(self, judge):
-        parsed = {"verdict": "NOT_VULNERABLE", "severity": "none", "confidence": 0.9, "reasoning": "SafeMath used.", "recommendation": "None.", "attacker_score": 0.2, "defender_score": 0.9}
+        parsed = {"verdict": "NOT_VULNERABLE", "severity": "none", "confidence": "HIGH", "reasoning": "SafeMath used.", "recommendation": "None.", "attacker_score": 0.2, "defender_score": 0.9}
         verdict = judge._extract_verdict(parsed, "test-claim")
         assert verdict.is_valid is False
 
     def test_fallback_parse_verdict_valid(self, judge):
-        response = "VERDICT: VALID_VULNERABILITY\n\nSEVERITY: HIGH\n\nREASONING: Confirmed.\n\nRECOMMENDATION: Add guard.\n\nCONFIDENCE: 0.85\n\nATTACKER_SCORE: 0.9\nDEFENDER_SCORE: 0.4"
+        response = "VERDICT: VALID_VULNERABILITY\n\nSEVERITY: HIGH\n\nREASONING: Confirmed.\n\nRECOMMENDATION: Add guard.\n\nCONFIDENCE: HIGH\n\nATTACKER_SCORE: 0.9\nDEFENDER_SCORE: 0.4"
         verdict = judge._fallback_parse_verdict(response, "test-claim")
         assert verdict.is_valid is True
         assert verdict.severity == "high"
-        assert verdict.confidence == 0.85
+        assert verdict.confidence == ConfidenceLevel.HIGH
 
     def test_fallback_parse_verdict_invalid(self, judge):
-        response = "VERDICT: NOT_VULNERABLE\n\nSEVERITY: none\n\nREASONING: SafeMath used.\n\nCONFIDENCE: 0.9"
+        response = "VERDICT: NOT_VULNERABLE\n\nSEVERITY: none\n\nREASONING: SafeMath used.\n\nCONFIDENCE: HIGH"
         verdict = judge._fallback_parse_verdict(response, "test-claim")
         assert verdict.is_valid is False
 
@@ -138,7 +139,7 @@ class TestVerdict:
             claim_id="test-1",
             is_valid=True,
             severity="critical",
-            confidence=0.9,
+            confidence=ConfidenceLevel.HIGH,
             reasoning="Test",
             recommendation="Fix",
             attacker_score=0.9,
@@ -147,4 +148,4 @@ class TestVerdict:
         result = verdict.to_dict()
         assert result["is_valid"] is True
         assert result["severity"] == "critical"
-        assert result["confidence"] == 0.9
+        assert result["confidence"] == "HIGH"

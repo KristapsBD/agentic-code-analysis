@@ -68,7 +68,7 @@ Respond with ONLY this JSON structure:
   "evidence": "Quote the specific lines that support your verdict",
   "mitigations_found": ["Each specific protection found, with its location in the code"],
   "recommended_severity": "critical|high|medium|low|none",
-  "confidence": 0.85
+  "confidence": "HIGH"
 }}
 
 Use PARTIALLY_MITIGATED when a protection reduces but does not fully eliminate the attack surface. In that case, explain what attack surface remains."""
@@ -97,7 +97,7 @@ Respond with ONLY this JSON structure:
   "verdict": "ACKNOWLEDGE_VULNERABILITY or MAINTAIN_DEFENSE",
   "reasoning": "Your direct response to the new arguments the Attacker raised — not a restatement of prior points",
   "final_assessment": "Your current technical conclusion on whether this vulnerability exists",
-  "confidence": 0.8
+  "confidence": "HIGH"
 }}"""
 
 CLARIFICATION_RESPONSE_PROMPT_TEMPLATE = """The Judge has requested clarification on a vulnerability claim you are defending against.
@@ -117,5 +117,5 @@ Respond with ONLY this JSON structure:
 {{
   "answer": "Your precise answer to the Judge's specific question, with code references",
   "supporting_evidence": "The specific code lines or mechanisms that support your answer",
-  "confidence": 0.8
+  "confidence": "HIGH"
 }}"""

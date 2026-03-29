@@ -82,7 +82,7 @@ Respond with ONLY this JSON structure:
 {{
   "verdict": "VALID_VULNERABILITY or NOT_VULNERABLE",
   "severity": "critical|high|medium|low|none",
-  "confidence": 0.8,
+  "confidence": "HIGH",
   "reasoning": "Detailed explanation referencing specific code and the arguments from both sides",
   "recommendation": "Specific fix if valid; explanation of why the protection is sufficient if not vulnerable",
   "attacker_score": 0.7,
@@ -96,7 +96,7 @@ attacker_score and defender_score reflect argument quality (0.0 = no technical b
 Set needs_clarification to true ONLY if:
 - Both sides present technically sound but contradictory interpretations of the same code
 - A critical technical detail (call ordering, modifier scope, storage layout) is genuinely ambiguous in the code
-- Your confidence is below 0.7
+- Your confidence is LOW
 
 Otherwise, render a definitive verdict."""
 
@@ -134,7 +134,7 @@ Respond with ONLY this JSON structure:
 {{
   "verdict": "VALID_VULNERABILITY or NOT_VULNERABLE",
   "severity": "critical|high|medium|low|none",
-  "confidence": 0.8,
+  "confidence": "HIGH",
   "reasoning": "Your final determination incorporating the clarification responses and all prior arguments",
   "recommendation": "Specific fix if valid; explanation of why the code is safe if not vulnerable",
   "attacker_score": 0.7,

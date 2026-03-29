@@ -53,10 +53,10 @@ BEHAVIORAL GUIDELINES:
    - upgradeable_proxy: contract is explicitly a proxy or upgradeable implementation
 
 SCORING GUIDANCE:
-- Confidence 0.9–1.0: Exploit path is clear, impact is certain
-- Confidence 0.7–0.9: Likely exploitable but depends on caller context or token behaviour
-- Confidence 0.6–0.7: Pattern is suspicious and the exploit path is plausible but indirect
-- Only report findings with confidence >= 0.6
+- HIGH: Exploit path is clear, impact is certain, concrete code evidence
+- MEDIUM: Likely exploitable but depends on caller context or token behaviour
+- LOW: Pattern is suspicious and the exploit path is plausible but indirect
+- Only report findings with confidence MEDIUM or above
 
 DEDUPLICATION RULE:
 Report at most one finding per canonical vulnerability type. If the same type appears in multiple locations, report only the single most severe and most directly exploitable instance."""
@@ -73,12 +73,12 @@ For each vulnerability you identify, provide:
 3. Exact location (function name and line number where possible)
 4. A concrete exploit path — the specific sequence of calls an attacker would make
 5. Direct code evidence — quote the specific lines that enable the exploit
-6. Your confidence (0.0–1.0)
+6. Your confidence level (HIGH, MEDIUM, or LOW)
 
 CANONICAL TYPE LABELS (use exactly one per finding):
 {vulnerability_types}
 
-Report only findings with confidence >= 0.6. For each canonical type, report the single most severe and most directly exploitable instance — do not list multiple occurrences of the same type. Focus on the PRIMARY vulnerability: the one dominant issue that poses the greatest risk to this specific contract. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing. For time_manipulation, bad_randomness, signature_replay, and upgradeable_proxy: only report if the contract actually uses the relevant pattern (block.timestamp for randomness/tight time logic, ecrecover/EIP-712 for signatures, proxy pattern for upgradeable_proxy).
+Report only findings with confidence MEDIUM or above. For each canonical type, report the single most severe and most directly exploitable instance — do not list multiple occurrences of the same type. Focus on the PRIMARY vulnerability: the one dominant issue that poses the greatest risk to this specific contract. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing. For time_manipulation, bad_randomness, signature_replay, and upgradeable_proxy: only report if the contract actually uses the relevant pattern (block.timestamp for randomness/tight time logic, ecrecover/EIP-712 for signatures, proxy pattern for upgradeable_proxy).
 
 Respond with ONLY this JSON structure:
 
@@ -91,7 +91,7 @@ Respond with ONLY this JSON structure:
       "location": "withdraw() at line 42",
       "description": "External call executes before balance is zeroed, enabling recursive re-entry",
       "evidence": "Line 42: (bool success,) = msg.sender.call{{value: amount}}(\"\"); precedes line 43: balance[msg.sender] = 0; — Exploit: (1) attacker calls withdraw(), (2) attacker fallback re-enters withdraw() before balance update, (3) full contract balance drained.",
-      "confidence": 0.95
+      "confidence": "HIGH"
     }}
   ]
 }}
@@ -120,7 +120,7 @@ Respond with ONLY this JSON structure:
   "verdict": "REBUTTAL or CONCEDE",
   "reasoning": "Your direct response to the Defender's specific argument — new analysis only, not a restatement",
   "additional_evidence": "Specific reason the cited mitigation is insufficient, or empty string if conceding",
-  "confidence": 0.75
+  "confidence": "MEDIUM"
 }}"""
 
 CLARIFICATION_RESPONSE_PROMPT_TEMPLATE = """The Judge has requested clarification on a vulnerability claim you made.
@@ -140,5 +140,5 @@ Respond with ONLY this JSON structure:
 {{
   "answer": "Your precise answer to the Judge's specific question, with code references",
   "supporting_evidence": "The specific code lines or call sequence that support your answer",
-  "confidence": 0.8
+  "confidence": "HIGH"
 }}"""

@@ -295,7 +295,7 @@ class Evaluator:
         debate_manager = DebateManager(
             provider=llm_provider,
             max_rounds=self.max_rounds,
-            judge_confidence_threshold=settings.judge_confidence_threshold,
+            judge_clarification_trigger=settings.judge_clarification_trigger,
             verbose=False,
         )
 
@@ -498,7 +498,7 @@ class Evaluator:
         debate_manager = DebateManager(
             provider=llm_provider,
             max_rounds=self.max_rounds,
-            judge_confidence_threshold=settings.judge_confidence_threshold,
+            judge_clarification_trigger=settings.judge_clarification_trigger,
             verbose=False,
         )
 

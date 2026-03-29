@@ -73,6 +73,36 @@ class LLMProvider(str, Enum):
     GEMINI = "gemini"
 
 
+_CONFIDENCE_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+
+
+class ConfidenceLevel(str, Enum):
+    """Categorical confidence level used across agents and the judge.
+
+    Replaces float confidence scores (0.0–1.0) with an honest three-tier
+    signal that reflects what the model is actually communicating:
+    - HIGH:   clear evidence, concrete exploit path, minimal ambiguity
+    - MEDIUM: plausible but depends on context or has some uncertainty
+    - LOW:    suspicious pattern, indirect path, or genuinely ambiguous
+    """
+
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+    def __lt__(self, other: "ConfidenceLevel") -> bool:
+        return _CONFIDENCE_ORDER[self.value] < _CONFIDENCE_ORDER[other.value]
+
+    def __le__(self, other: "ConfidenceLevel") -> bool:
+        return _CONFIDENCE_ORDER[self.value] <= _CONFIDENCE_ORDER[other.value]
+
+    def __gt__(self, other: "ConfidenceLevel") -> bool:
+        return _CONFIDENCE_ORDER[self.value] > _CONFIDENCE_ORDER[other.value]
+
+    def __ge__(self, other: "ConfidenceLevel") -> bool:
+        return _CONFIDENCE_ORDER[self.value] >= _CONFIDENCE_ORDER[other.value]
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -114,8 +144,8 @@ class Settings(BaseSettings):
         default=0.2, alias="TEMP_JUDGE", ge=0.0, le=2.0
     )
 
-    judge_confidence_threshold: float = Field(
-        default=0.7, alias="JUDGE_CONFIDENCE_THRESHOLD", ge=0.0, le=1.0
+    judge_clarification_trigger: ConfidenceLevel = Field(
+        default=ConfidenceLevel.LOW, alias="JUDGE_CLARIFICATION_TRIGGER"
     )
 
     # Logging

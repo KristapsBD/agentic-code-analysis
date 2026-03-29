@@ -191,7 +191,7 @@ async def _run_analysis(
     debate_manager = DebateManager(
         provider=llm_provider,
         max_rounds=rounds,
-        judge_confidence_threshold=settings.judge_confidence_threshold,
+        judge_clarification_trigger=settings.judge_clarification_trigger,
         verbose=verbose,
         web_search=web_search,
     )
@@ -501,6 +501,7 @@ def info() -> None:
     table.add_row("Temp (Debate)", str(settings.temp_debate))
     table.add_row("Temp (Clarification)", str(settings.temp_clarification))
     table.add_row("Temp (Judge)", str(settings.temp_judge))
+    table.add_row("Judge Clarification Trigger", settings.judge_clarification_trigger.value)
     table.add_row("Log Level", settings.log_level)
 
     # API Key status

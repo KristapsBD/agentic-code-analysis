@@ -17,7 +17,7 @@ from src.knowledge.prompts.judge import (
     JUDGE_SYSTEM_PROMPT,
     JUDGMENT_PROMPT_TEMPLATE,
 )
-from src.config import settings
+from src.config import ConfidenceLevel, settings
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class Verdict:
     claim_id: str
     is_valid: bool
     severity: str
-    confidence: float
+    confidence: ConfidenceLevel
     reasoning: str
     recommendation: str
     attacker_score: float  # How convincing was the Attacker (0-1)
@@ -42,7 +42,7 @@ class Verdict:
             "claim_id": self.claim_id,
             "is_valid": self.is_valid,
             "severity": self.severity,
-            "confidence": self.confidence,
+            "confidence": self.confidence.value,
             "reasoning": self.reasoning,
             "recommendation": self.recommendation,
             "attacker_score": self.attacker_score,
@@ -147,7 +147,7 @@ class JudgeAgent(BaseAgent):
                 "verdict": verdict.to_dict(),
                 "is_valid": verdict.is_valid,
                 "final_severity": verdict.severity,
-                "judge_confidence": verdict.confidence,
+                "judge_confidence": verdict.confidence.value,
                 "needs_clarification": needs_clarification,
                 "clarification_question": clarification_question,
             },
@@ -210,7 +210,7 @@ class JudgeAgent(BaseAgent):
                 "verdict": verdict.to_dict(),
                 "is_valid": verdict.is_valid,
                 "final_severity": verdict.severity,
-                "judge_confidence": verdict.confidence,
+                "judge_confidence": verdict.confidence.value,
                 "is_final_after_clarification": True,
             },
         )
@@ -253,7 +253,7 @@ class JudgeAgent(BaseAgent):
         if isinstance(severity, str):
             severity = severity.lower()
 
-        confidence = self._normalize_confidence(parsed.get("confidence"))
+        confidence = self._parse_confidence_level(parsed.get("confidence"))
         attacker_score = self._normalize_confidence(parsed.get("attacker_score"))
         defender_score = self._normalize_confidence(parsed.get("defender_score"))
 
@@ -307,17 +307,11 @@ class JudgeAgent(BaseAgent):
         if severity_match:
             severity = severity_match.group(1).lower()
 
-        # Extract confidence
-        confidence = 0.5
-        conf_match = re.search(r"CONFIDENCE[:\s]*([0-9.]+)", raw_content, re.IGNORECASE)
+        # Extract confidence level
+        confidence = ConfidenceLevel.MEDIUM
+        conf_match = re.search(r"CONFIDENCE[:\s]*(HIGH|MEDIUM|LOW)", raw_content, re.IGNORECASE)
         if conf_match:
-            try:
-                conf = float(conf_match.group(1))
-                if conf > 1:
-                    conf = conf / 100
-                confidence = max(0.0, min(1.0, conf))
-            except ValueError:
-                pass
+            confidence = self._parse_confidence_level(conf_match.group(1))
 
         # Extract reasoning
         reasoning = ""

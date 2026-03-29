@@ -28,14 +28,12 @@ from src.agents.attacker_agent import AttackerAgent
 from src.agents.base_agent import VulnerabilityClaim
 from src.agents.defender_agent import DefenderAgent
 from src.agents.judge_agent import JudgeAgent, Verdict
+from src.config import ConfidenceLevel
 from src.orchestration.conversation import Conversation, TurnType
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
 
-# Convergence thresholds for early exit
-ATTACKER_CONCEDE_THRESHOLD = 0.4  # Attacker confidence below this -> likely concession
-DEFENDER_SAFE_THRESHOLD = 0.8  # Defender confidence above this -> strong defense
 
 _EXTENSION_MAP = {
     ".sol": "solidity",
@@ -172,7 +170,7 @@ class DebateManager:
         self,
         provider: BaseLLMProvider,
         max_rounds: int = 2,
-        judge_confidence_threshold: float = 0.7,
+        judge_clarification_trigger: ConfidenceLevel = ConfidenceLevel.LOW,
         verbose: bool = False,
         console: Optional[Console] = None,
         # TODO: enable web_search=True by default once cost impact is understood
@@ -184,7 +182,8 @@ class DebateManager:
         Args:
             provider: LLM provider for agent interactions
             max_rounds: Maximum debate rounds per claim
-            judge_confidence_threshold: Confidence below which the Judge requests clarification
+            judge_clarification_trigger: Maximum confidence level at which the Judge may request
+                clarification (LOW = only when LOW; MEDIUM = LOW or MEDIUM)
             verbose: Whether to print verbose output
             console: Rich console for output (optional)
             web_search: When True, all three agents can search the web on every LLM
@@ -194,14 +193,14 @@ class DebateManager:
         """
         self.provider = provider
         self.max_rounds = max_rounds
-        self.judge_confidence_threshold = judge_confidence_threshold
+        self.judge_clarification_trigger = judge_clarification_trigger
         self.verbose = verbose
         self.web_search = web_search
         self.console = console or Console()
 
         logger.debug(
             f"Initializing DebateManager with provider={provider.provider_name}, "
-            f"max_rounds={max_rounds}, judge_threshold={judge_confidence_threshold}, "
+            f"max_rounds={max_rounds}, judge_trigger={judge_clarification_trigger.value}, "
             f"web_search={web_search}"
         )
 
@@ -315,7 +314,7 @@ class DebateManager:
         result.metadata["provider"] = self.provider.provider_name
         result.metadata["model"] = self.provider.model
         result.metadata["max_rounds"] = self.max_rounds
-        result.metadata["judge_confidence_threshold"] = self.judge_confidence_threshold
+        result.metadata["judge_clarification_trigger"] = self.judge_clarification_trigger.value
         result.metadata["web_search"] = self.web_search
 
         return result.to_dict()
@@ -382,7 +381,7 @@ class DebateManager:
             if self._has_converged(attacker_confidence, defender_confidence):
                 logger.info(
                     f"[{claim.id}] Convergence detected at round {round_num} "
-                    f"(attacker={attacker_confidence:.2f}, defender={defender_confidence:.2f})"
+                    f"(attacker={attacker_confidence.value}, defender={defender_confidence.value})"
                 )
                 if self.verbose:
                     self.console.print("  [yellow]Convergence detected - skipping remaining rounds[/yellow]")
@@ -472,17 +471,17 @@ class DebateManager:
         if (
             needs_clarification
             and clarification_question
-            and judge_confidence < self.judge_confidence_threshold
+            and judge_confidence <= self.judge_clarification_trigger
         ):
             judge_requested_clarification = True
             logger.info(
                 f"[{claim.id}] Judge requesting clarification "
-                f"(confidence={judge_confidence:.2f} < threshold={self.judge_confidence_threshold:.2f})"
+                f"(confidence={judge_confidence.value}, trigger={self.judge_clarification_trigger.value})"
             )
             if self.verbose:
                 self.console.print(
                     f"  [bold yellow]Judge requesting clarification[/bold yellow] "
-                    f"(confidence: {judge_confidence:.2f})"
+                    f"(confidence: {judge_confidence.value})"
                 )
 
             judge_response = await self._run_clarification_round(
@@ -500,7 +499,7 @@ class DebateManager:
             claim_id=claim.id,
             is_valid=verdict_dict.get("is_valid", False),
             severity=verdict_dict.get("severity", "medium"),
-            confidence=verdict_dict.get("confidence", 0.5),
+            confidence=ConfidenceLevel(str(verdict_dict.get("confidence", "MEDIUM")).upper()),
             reasoning=verdict_dict.get("reasoning", ""),
             recommendation=verdict_dict.get("recommendation", ""),
             attacker_score=verdict_dict.get("attacker_score", 0.5),
@@ -607,13 +606,15 @@ class DebateManager:
         return final_response
 
     @staticmethod
-    def _has_converged(attacker_confidence: float, defender_confidence: float) -> bool:
+    def _has_converged(
+        attacker_confidence: ConfidenceLevel, defender_confidence: ConfidenceLevel
+    ) -> bool:
         """
-        Check if the debate has converged based on agent confidence scores.
+        Check if the debate has converged based on agent confidence levels.
 
         Convergence occurs when:
-        - The Attacker's confidence drops below the concession threshold, OR
-        - The Defender's confidence rises above the safe threshold
+        - The Attacker's confidence is LOW (effectively conceding), OR
+        - The Defender's confidence is HIGH (claim clearly refuted)
 
         Args:
             attacker_confidence: The Attacker's current confidence in the claim
@@ -622,9 +623,9 @@ class DebateManager:
         Returns:
             True if convergence is detected
         """
-        if attacker_confidence < ATTACKER_CONCEDE_THRESHOLD:
+        if attacker_confidence == ConfidenceLevel.LOW:
             return True
-        if defender_confidence > DEFENDER_SAFE_THRESHOLD:
+        if defender_confidence == ConfidenceLevel.HIGH:
             return True
         return False
 

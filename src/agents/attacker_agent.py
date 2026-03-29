@@ -17,7 +17,7 @@ from src.knowledge.prompts.attacker import (
     SCAN_PROMPT_TEMPLATE,
     VULNERABILITY_TYPES,
 )
-from src.config import settings
+from src.config import ConfidenceLevel, settings
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class AttackerAgent(BaseAgent):
             content=str(parsed),
             claims=claims,
             reasoning="Initial vulnerability scan completed",
-            confidence=0.7,
+            confidence=ConfidenceLevel.HIGH,
             metadata={
                 "scan_type": "initial",
             },
@@ -114,7 +114,7 @@ class AttackerAgent(BaseAgent):
         # Determine if this is a rebuttal or concession from structured output
         verdict = parsed.get("verdict", "REBUTTAL").upper()
         is_concession = "CONCEDE" in verdict
-        confidence = self._normalize_confidence(parsed.get("confidence"), default=0.7)
+        confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.MEDIUM)
 
         return AgentResponse(
             agent_role=self.role,
@@ -153,7 +153,7 @@ class AttackerAgent(BaseAgent):
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_clarification)
 
-        confidence = self._normalize_confidence(parsed.get("confidence"), default=0.7)
+        confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.HIGH)
 
         return AgentResponse(
             agent_role=self.role,
@@ -211,7 +211,7 @@ class AttackerAgent(BaseAgent):
                 location=data.get("location", data.get("function", "Unknown")),
                 description=data.get("description", "No description provided"),
                 evidence=data.get("evidence", data.get("code_snippet", "")),
-                confidence=float(data.get("confidence", 0.7)),
+                confidence=self._parse_confidence_level(data.get("confidence"), default=ConfidenceLevel.HIGH),
             )
         except (KeyError, ValueError, TypeError):
             return None
@@ -250,14 +250,7 @@ class AttackerAgent(BaseAgent):
             elif upper_line.startswith("EVIDENCE:") or upper_line.startswith("CODE:"):
                 current_claim["evidence"] = line.split(":", 1)[1].strip()
             elif upper_line.startswith("CONFIDENCE:"):
-                try:
-                    conf_str = line.split(":", 1)[1].strip().replace("%", "")
-                    conf = float(conf_str)
-                    if conf > 1:
-                        conf = conf / 100
-                    current_claim["confidence"] = conf
-                except ValueError:
-                    current_claim["confidence"] = 0.7
+                current_claim["confidence"] = line.split(":", 1)[1].strip()
 
         # Don't forget the last claim
         if current_claim and current_claim.get("vulnerability_type"):
