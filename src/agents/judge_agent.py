@@ -17,6 +17,7 @@ from src.knowledge.prompts.judge import (
     JUDGE_SYSTEM_PROMPT,
     JUDGMENT_PROMPT_TEMPLATE,
 )
+from src.config import settings
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ class JudgeAgent(BaseAgent):
             debate_history=debate_summary,
         )
 
-        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_judge)
 
         # Extract verdict from structured JSON response
         verdict = self._extract_verdict(parsed, claim_dict.get("id", "unknown"))
@@ -194,7 +195,7 @@ class JudgeAgent(BaseAgent):
             defender_argument=defender_argument,
         )
 
-        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_judge)
 
         # Extract final verdict
         verdict = self._extract_verdict(parsed, claim_dict.get("id", "unknown"))

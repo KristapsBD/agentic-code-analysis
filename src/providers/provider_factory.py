@@ -38,7 +38,7 @@ class ProviderFactory:
             ValueError: If provider is unknown or API key is not configured
         """
         provider = provider or settings.default_provider
-        temperature = temperature if temperature is not None else settings.default_temperature
+        resolved_temperature = temperature if temperature is not None else 0.7
         model = model or settings.get_model_for_provider(provider)
         api_key = settings.get_api_key_for_provider(provider)
 
@@ -49,11 +49,11 @@ class ProviderFactory:
             )
 
         if provider == LLMProvider.OPENAI:
-            return OpenAIProvider(api_key=api_key, model=model, temperature=temperature)
+            return OpenAIProvider(api_key=api_key, model=model, temperature=resolved_temperature)
         elif provider == LLMProvider.ANTHROPIC:
-            return AnthropicProvider(api_key=api_key, model=model, temperature=temperature)
+            return AnthropicProvider(api_key=api_key, model=model, temperature=resolved_temperature)
         elif provider == LLMProvider.GEMINI:
-            return GeminiProvider(api_key=api_key, model=model, temperature=temperature)
+            return GeminiProvider(api_key=api_key, model=model, temperature=resolved_temperature)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 

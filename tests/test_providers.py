@@ -83,7 +83,6 @@ class TestProviderFactory:
     @patch("src.providers.provider_factory.settings")
     def test_create_openai(self, mock_settings):
         mock_settings.default_provider = LLMProvider.OPENAI
-        mock_settings.default_temperature = 0.7
         mock_settings.get_model_for_provider.return_value = "gpt-4o"
         mock_settings.get_api_key_for_provider.return_value = "test-key"
         assert isinstance(ProviderFactory.create(LLMProvider.OPENAI), OpenAIProvider)
@@ -91,7 +90,6 @@ class TestProviderFactory:
     @patch("src.providers.provider_factory.settings")
     def test_create_anthropic(self, mock_settings):
         mock_settings.default_provider = LLMProvider.ANTHROPIC
-        mock_settings.default_temperature = 0.7
         mock_settings.get_model_for_provider.return_value = "claude-3-5-sonnet-20241022"
         mock_settings.get_api_key_for_provider.return_value = "test-key"
         assert isinstance(ProviderFactory.create(LLMProvider.ANTHROPIC), AnthropicProvider)

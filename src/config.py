@@ -97,9 +97,23 @@ class Settings(BaseSettings):
 
     # Debate Configuration
     default_debate_rounds: int = Field(default=2, alias="DEFAULT_DEBATE_ROUNDS", ge=1, le=5)
-    default_temperature: float = Field(
-        default=0.7, alias="DEFAULT_TEMPERATURE", ge=0.0, le=2.0
+
+    # Temperature Configuration
+    # Each value targets a specific role/phase in the pipeline.
+    # Higher values increase output diversity; lower values improve consistency.
+    temp_attacker_scan: float = Field(
+        default=0.4, alias="TEMP_ATTACKER_SCAN", ge=0.0, le=2.0
     )
+    temp_debate: float = Field(
+        default=0.3, alias="TEMP_DEBATE", ge=0.0, le=2.0
+    )
+    temp_clarification: float = Field(
+        default=0.2, alias="TEMP_CLARIFICATION", ge=0.0, le=2.0
+    )
+    temp_judge: float = Field(
+        default=0.2, alias="TEMP_JUDGE", ge=0.0, le=2.0
+    )
+
     judge_confidence_threshold: float = Field(
         default=0.7, alias="JUDGE_CONFIDENCE_THRESHOLD", ge=0.0, le=1.0
     )

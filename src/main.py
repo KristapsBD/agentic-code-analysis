@@ -497,7 +497,10 @@ def info() -> None:
     table.add_row("Anthropic Model", settings.default_model_anthropic)
     table.add_row("Gemini Model", settings.default_model_gemini)
     table.add_row("Debate Rounds", str(settings.default_debate_rounds))
-    table.add_row("Temperature", str(settings.default_temperature))
+    table.add_row("Temp (Attacker Scan)", str(settings.temp_attacker_scan))
+    table.add_row("Temp (Debate)", str(settings.temp_debate))
+    table.add_row("Temp (Clarification)", str(settings.temp_clarification))
+    table.add_row("Temp (Judge)", str(settings.temp_judge))
     table.add_row("Log Level", settings.log_level)
 
     # API Key status

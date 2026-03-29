@@ -51,6 +51,12 @@ ANTHROPIC_MODEL=claude-sonnet-4-6
 GEMINI_MODEL=gemini-2.5-flash
 DEFAULT_DEBATE_ROUNDS=2
 LOG_LEVEL=INFO                   # INFO | DEBUG
+
+# Temperature per pipeline phase (0.0 = deterministic, 2.0 = very creative)
+TEMP_ATTACKER_SCAN=0.4           # Initial vulnerability scan
+TEMP_DEBATE=0.3                  # Attacker/defender debate rounds
+TEMP_CLARIFICATION=0.2           # Factual clarification responses
+TEMP_JUDGE=0.2                   # Judge verdict rendering
 ```
 
 ### Provider comparison

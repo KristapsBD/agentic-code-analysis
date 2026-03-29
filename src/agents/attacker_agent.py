@@ -17,6 +17,7 @@ from src.knowledge.prompts.attacker import (
     SCAN_PROMPT_TEMPLATE,
     VULNERABILITY_TYPES,
 )
+from src.config import settings
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ class AttackerAgent(BaseAgent):
             vulnerability_types=", ".join(VULNERABILITY_TYPES),
         )
 
-        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.3)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_attacker_scan)
 
         # Extract claims from the structured JSON response
         claims = self._extract_claims(parsed)
@@ -108,7 +109,7 @@ class AttackerAgent(BaseAgent):
             defense_argument=defense,
         )
 
-        parsed = await self._send_message_json(prompt, include_history=True, temperature=0.3)
+        parsed = await self._send_message_json(prompt, include_history=True, temperature=settings.temp_debate)
 
         # Determine if this is a rebuttal or concession from structured output
         verdict = parsed.get("verdict", "REBUTTAL").upper()
@@ -150,7 +151,7 @@ class AttackerAgent(BaseAgent):
             judge_question=judge_question,
         )
 
-        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_clarification)
 
         confidence = self._normalize_confidence(parsed.get("confidence"), default=0.7)
 

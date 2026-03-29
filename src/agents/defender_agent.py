@@ -15,6 +15,7 @@ from src.knowledge.prompts.defender import (
     DEFENSE_PROMPT_TEMPLATE,
     REBUTTAL_RESPONSE_PROMPT_TEMPLATE,
 )
+from src.config import settings
 from src.providers.base_provider import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ class DefenderAgent(BaseAgent):
             attacker_confidence=claim_dict.get("confidence", 0.5),
         )
 
-        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.3)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_debate)
 
         # Extract structured defense data
         defense_verdict = parsed.get("verdict", "unknown")
@@ -121,7 +122,7 @@ class DefenderAgent(BaseAgent):
             rebuttal=rebuttal,
         )
 
-        parsed = await self._send_message_json(prompt, include_history=True, temperature=0.3)
+        parsed = await self._send_message_json(prompt, include_history=True, temperature=settings.temp_debate)
 
         # Determine verdict from structured output
         verdict = parsed.get("verdict", "MAINTAIN_DEFENSE").upper()
@@ -163,7 +164,7 @@ class DefenderAgent(BaseAgent):
             judge_question=judge_question,
         )
 
-        parsed = await self._send_message_json(prompt, include_history=False, temperature=0.2)
+        parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_clarification)
 
         confidence = float(parsed.get("confidence", 0.5))
 
