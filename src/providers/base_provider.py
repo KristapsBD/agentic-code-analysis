@@ -132,14 +132,14 @@ class BaseLLMProvider(ABC):
     async def _with_retry(
         self,
         call_fn: Callable[[], Coroutine[Any, Any, Any]],
-        max_retries: int = 5,
-        base_delay: float = 5.0,
+        max_retries: int = 3,
+        base_delay: float = 30.0,
         max_delay: float = 120.0,
     ) -> Any:
         """
         Execute an async API call with exponential backoff on rate-limit errors.
 
-        Delays: 5s → 10s → 20s → 40s → 80s (capped at max_delay).
+        Delays: 30s → 60s → 120s (capped at max_delay).
         Non-rate-limit errors are re-raised immediately without retry.
         """
         for attempt in range(max_retries):
