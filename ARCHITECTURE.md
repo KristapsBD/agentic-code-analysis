@@ -172,7 +172,10 @@ settings = Settings()  # populated from env vars at import time
 | Anthropic model | `DEFAULT_MODEL_ANTHROPIC` | `claude-sonnet-4-6` |
 | Gemini model | `DEFAULT_MODEL_GEMINI` | `gemini-2.5-flash` |
 | Debate rounds | `DEFAULT_DEBATE_ROUNDS` | `2` |
-| Temperature | `DEFAULT_TEMPERATURE` | `0.7` |
+| Attacker scan temperature | `TEMP_ATTACKER_SCAN` | `0.4` |
+| Debate round temperature | `TEMP_DEBATE` | `0.3` |
+| Clarification temperature | `TEMP_CLARIFICATION` | `0.2` |
+| Judge temperature | `TEMP_JUDGE` | `0.2` |
 | Judge threshold | `JUDGE_CONFIDENCE_THRESHOLD` | `0.7` |
 | Log level | `LOG_LEVEL` | `INFO` |
 

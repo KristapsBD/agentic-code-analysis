@@ -57,6 +57,10 @@ TEMP_ATTACKER_SCAN=0.4           # Initial vulnerability scan
 TEMP_DEBATE=0.3                  # Attacker/defender debate rounds
 TEMP_CLARIFICATION=0.2           # Factual clarification responses
 TEMP_JUDGE=0.2                   # Judge verdict rendering
+
+# Judge confidence threshold — below this the judge may request one clarification round
+# Note: also hardcoded in src/knowledge/prompts/judge.py; change both together
+JUDGE_CONFIDENCE_THRESHOLD=0.7
 ```
 
 ### Provider comparison
