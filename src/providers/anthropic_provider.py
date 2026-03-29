@@ -72,11 +72,11 @@ class AnthropicProvider(BaseLLMProvider):
             web_search: When True, enables Anthropic's built-in web search.
                         Claude will search the web when needed and incorporate
                         results into its response automatically.
-            json_mode: When True (and web_search is False), sets output_config
-                       with a permissive json_schema, enforcing valid JSON output
-                       via constrained decoding. Requires a supported model
-                       (claude-sonnet-4-6, claude-opus-4-6, claude-sonnet-4-5,
-                       claude-opus-4-5, claude-haiku-4-5).
+            json_mode: Accepted for interface compatibility but has no effect on
+                       Anthropic. JSON output is enforced via prompt instructions
+                       in _send_message_json. Anthropic has no schema-free JSON
+                       mode equivalent to OpenAI's json_object or Gemini's
+                       response_mime_type.
         """
         self._validate_messages(messages)
 
@@ -99,14 +99,6 @@ class AnthropicProvider(BaseLLMProvider):
             request_kwargs["system"] = system_prompt
         if web_search:
             request_kwargs["tools"] = [_WEB_SEARCH_TOOL]
-        elif json_mode:
-            # output_config is incompatible with tools (including web search)
-            request_kwargs["output_config"] = {
-                "format": {
-                    "type": "json_schema",
-                    "schema": {"type": "object", "additionalProperties": True},
-                }
-            }
 
         response = await self._with_retry(
             lambda: self.client.messages.create(**request_kwargs)

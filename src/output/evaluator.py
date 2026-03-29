@@ -239,12 +239,9 @@ class Evaluator:
         "arithmetic": ["arithmetic", "integer_overflow", "integer_underflow", "overflow", "underflow", "safeMath"],
         "unchecked_calls": ["unchecked_call", "unchecked_return", "unchecked_low_level", "return_value"],
         "denial_of_service": ["dos", "denial_of_service", "denial-of-service", "gas_griefing", "unbounded_loop"],
-        "front_running": ["front_running", "front-running", "frontrunning", "race_condition", "sandwich", "mev"],
         "time_manipulation": ["time_manipulation", "timestamp", "block_timestamp", "block_number"],
         "bad_randomness": ["randomness", "bad_randomness", "weak_randomness", "predictable_random"],
         "signature_replay": ["signature_replay", "replay_attack", "missing_nonce", "malleab"],
-        "flash_loan": ["flash_loan", "flashloan", "flash-loan"],
-        "oracle_manipulation": ["oracle", "price_manipulation", "twap", "spot_price"],
         "delegatecall": ["delegatecall", "delegate_call", "storage_collision", "proxy_collision"],
         "upgradeable_proxy": ["upgradeable", "upgradable", "uninitialized_impl", "storage_layout"],
     }
