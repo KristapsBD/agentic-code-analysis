@@ -82,13 +82,13 @@ def analyze(
         help="Enable verbose output",
     ),
     web_search: bool = typer.Option(
-        False,
-        "--web-search",
+        True,
+        "--web-search/--no-web-search",
         "-w",
         help=(
             "Enable built-in web search for all agents "
             "(Anthropic: web_search_20260209, Gemini: Google Search grounding). "
-            "No effect on OpenAI. Increases latency and cost."
+            "No effect on OpenAI. Increases latency and cost. Enabled by default."
         ),
     ),
 ) -> None:
@@ -113,8 +113,7 @@ def analyze(
     console.print(f"[cyan]Analyzing:[/cyan] {contract_path}")
     console.print(f"[cyan]Provider:[/cyan] {provider.value}")
     console.print(f"[cyan]Debate Rounds:[/cyan] {rounds}")
-    if web_search:
-        console.print(f"[cyan]Web Search:[/cyan] enabled")
+    console.print(f"[cyan]Web Search:[/cyan] {'enabled' if web_search else 'disabled'}")
     if _debug_log_file:
         console.print(f"[cyan]Debug log:[/cyan] {_debug_log_file}")
     console.print()

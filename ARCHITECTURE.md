@@ -112,7 +112,7 @@ python -m src.main analyze contracts/Token.sol --provider anthropic --rounds 2
 | `--rounds` | `2` | Maximum debate rounds per claim (1–5) |
 | `--output` | none | Custom path for JSON output (auto-saves to `data/results/` regardless) |
 | `--verbose` | off | Print each debate turn to console as it runs |
-| `--web-search` | off | Enable built-in web search for all agents (Anthropic + Gemini only) |
+| `--web-search` | on | Enable built-in web search for all agents (Anthropic + Gemini only) |
 
 **Output:** Always saves two files to `data/results/`:
 - `<contract_name>_<timestamp>.json` — full structured result
@@ -169,7 +169,7 @@ settings = Settings()  # populated from env vars at import time
 | Gemini API key | `GEMINI_API_KEY` | — |
 | Default provider | `DEFAULT_PROVIDER` | `openai` |
 | OpenAI model | `DEFAULT_MODEL_OPENAI` | `gpt-4o` |
-| Anthropic model | `DEFAULT_MODEL_ANTHROPIC` | `claude-sonnet-4-6` |
+| Anthropic model | `DEFAULT_MODEL_ANTHROPIC` | `claude-3-5-sonnet-20241022` |
 | Gemini model | `DEFAULT_MODEL_GEMINI` | `gemini-2.5-flash` |
 | Debate rounds | `DEFAULT_DEBATE_ROUNDS` | `2` |
 | Attacker scan temperature | `TEMP_ATTACKER_SCAN` | `0.4` |
@@ -251,16 +251,16 @@ History is cleared between claims via `clear_history()` to prevent context bleed
 
 **Temperature settings used per agent:**
 
-| Agent method | Temperature |
+| Agent method | Temperature (env var) |
 |---|---|
-| Attacker — initial scan | `0.3` |
-| Attacker — rebuttal | `0.3` |
-| Attacker — clarification response | `0.2` |
-| Defender — initial defense | `0.3` |
-| Defender — rebuttal response | `0.3` |
-| Defender — clarification response | `0.2` |
-| Judge — initial assessment | `0.2` |
-| Judge — final verdict | `0.2` |
+| Attacker — initial scan | `0.4` (`TEMP_ATTACKER_SCAN`) |
+| Attacker — rebuttal | `0.3` (`TEMP_DEBATE`) |
+| Attacker — clarification response | `0.2` (`TEMP_CLARIFICATION`) |
+| Defender — initial defense | `0.3` (`TEMP_DEBATE`) |
+| Defender — rebuttal response | `0.3` (`TEMP_DEBATE`) |
+| Defender — clarification response | `0.2` (`TEMP_CLARIFICATION`) |
+| Judge — initial assessment | `0.2` (`TEMP_JUDGE`) |
+| Judge — final verdict | `0.2` (`TEMP_JUDGE`) |
 
 Low temperatures are used throughout because these are structured analytical tasks, not creative ones.
 
@@ -269,8 +269,6 @@ Low temperatures are used throughout because these are structured analytical tas
 #### `AttackerAgent`
 
 Role: scan the contract and raise vulnerability claims with high precision.
-
-**Confidence threshold:** only claims with attacker confidence ≥ 0.6 are emitted. Claims below this threshold are discarded before the debate begins.
 
 **Deduplication rule:** at most one claim per canonical vulnerability type is reported — the single most severe and most directly exploitable instance. This prevents multiple weaker variants of the same class from inflating claim counts and FP rates.
 
@@ -328,8 +326,8 @@ The Judge always uses `include_history=False` — each verdict is made on the fu
 
 **`_extract_verdict(parsed, claim_id) → Verdict`** handles the structured JSON parsing. It specifically handles:
 - Normalising `"VALID_VULNERABILITY"` vs `"NOT_VULNERABLE"` strings
-- Clamping confidence to `[0.0, 1.0]` (handles cases where the model returns `85` instead of `0.85`)
-- Clamping `attacker_score` and `defender_score` similarly
+- Parsing confidence as a `ConfidenceLevel` (`HIGH`/`MEDIUM`/`LOW`), defaulting to `MEDIUM`
+- Clamping `attacker_score` and `defender_score` to `[0.0, 1.0]`
 
 **Judge validation criteria** — the Judge requires all four of these to rule `VALID_VULNERABILITY`:
 1. The vulnerable code pattern is present at the cited location
@@ -361,11 +359,11 @@ The central controller. It owns the three agent instances and drives the full pi
 | `max_rounds` | `2` | Maximum debate rounds per claim |
 | `judge_clarification_trigger` | `LOW` | Maximum confidence level at which the Judge may request clarification |
 | `verbose` | `False` | Print each turn to console |
-| `web_search` | `False` | Enable built-in web search on every agent LLM call (Anthropic + Gemini only) |
+| `web_search` | `True` | Enable built-in web search on every agent LLM call (Anthropic + Gemini only) |
 
 **Convergence detection** — before each new debate round, `_has_converged()` checks:
-- `attacker_confidence < 0.4` (Attacker is losing confidence → likely concession)
-- `defender_confidence > 0.8` (Defender is very confident → strong mitigation found)
+- `attacker_confidence == LOW` (Attacker is losing confidence → likely concession)
+- `defender_confidence == HIGH` (Defender is very confident → strong mitigation found)
 
 If either condition is met, the remaining rounds are skipped and the Judge is called immediately. This prevents wasted API calls when the debate has effectively settled.
 
@@ -393,7 +391,7 @@ A lightweight audit log. Stores every turn that occurs during the debate as a `C
 | `CLARIFICATION_RESPONSE` | After each agent responds to the Judge's question |
 | `JUDGMENT` | After Judge's final verdict (post-clarification) |
 
-The `Conversation` object is stored in `DebateResult` but not included in the serialised output (`to_dict()`) — it exists as an in-memory audit trail for the duration of the analysis.
+The `Conversation` object is stored in `DebateResult` and is included in the serialised output (`to_dict()`) under the `"conversation"` key as a list of turn dictionaries.
 
 ---
 
@@ -445,7 +443,7 @@ Converts the raw `DebateResult.to_dict()` into a typed `Report` object, then ren
 | `confidence` | Judge's verdict |
 | `recommendation` | Judge's verdict |
 | `attacker_evidence` | Original claim's evidence field |
-| `judge_reasoning` | Judge's reasoning (truncated to 500 chars in extraction) |
+| `judge_reasoning` | Judge's reasoning |
 
 Note: `defender_argument` is a field in `Finding` but is currently not populated by `generate()`.
 
@@ -494,7 +492,7 @@ main.py: analyze()
         │
         ├── ── PHASE 1: INITIAL SCAN ──────────────────────────────────
         │   AttackerAgent.analyze({contract_code, path, language})
-        │       → SCAN_PROMPT_TEMPLATE filled → LLM call (temp=0.3, no history)
+        │       → SCAN_PROMPT_TEMPLATE filled → LLM call (temp=0.4, no history)
         │       → JSON parsed → list[VulnerabilityClaim]
         │   Conversation.add_turn(ATTACK, ...)
         │
@@ -512,7 +510,7 @@ main.py: analyze()
             ├── Step 2 — DEBATE ROUNDS (up to max_rounds)
             │   for round in range(1, max_rounds + 1):
             │   │
-            │   ├── Check convergence (attacker_conf < 0.4 OR defender_conf > 0.8)
+            │   ├── Check convergence (attacker_conf == LOW OR defender_conf == HIGH)
             │   │   └── if converged: break early
             │   │
             │   ├── AttackerAgent.respond_to_defense({claim, defense_argument})
@@ -538,7 +536,7 @@ main.py: analyze()
             │   Conversation.add_turn(JUDGMENT, ...)
             │
             ├── Step 4 — OPTIONAL CLARIFICATION ROUND
-            │   if needs_clarification AND judge_confidence < threshold (0.7):
+            │   if needs_clarification AND judge_confidence ≤ JUDGE_CLARIFICATION_TRIGGER (LOW by default):
             │   │
             │   ├── Conversation.add_turn(CLARIFICATION, ...)
             │   │
@@ -578,7 +576,7 @@ severity:           str     — "critical" | "high" | "medium" | "low"
 location:           str     — function name and/or line number
 description:        str     — human-readable explanation
 evidence:           str     — quoted code + step-by-step exploit path
-confidence:         float   — Attacker's self-assessed confidence [0, 1]
+confidence:         ConfidenceLevel — Attacker's self-assessed confidence (HIGH/MEDIUM/LOW)
 ```
 
 ### `Verdict`
@@ -586,9 +584,9 @@ confidence:         float   — Attacker's self-assessed confidence [0, 1]
 claim_id:       str     — matches VulnerabilityClaim.id
 is_valid:       bool    — True = confirmed vulnerability
 severity:       str     — Judge's severity (may differ from Attacker's)
-confidence:     float   — Judge's confidence in this ruling [0, 1]
-reasoning:      str     — Judge's explanation (≤500 chars)
-recommendation: str     — Remediation advice (≤300 chars)
+confidence:     ConfidenceLevel — Judge's confidence in this ruling (HIGH/MEDIUM/LOW)
+reasoning:      str     — Judge's explanation
+recommendation: str     — Remediation advice
 attacker_score: float   — Quality of Attacker's argument [0, 1]
 defender_score: float   — Quality of Defender's argument [0, 1]
 ```
@@ -626,7 +624,7 @@ vulnerability_type: str
 severity:           str     — from Judge's verdict
 location:           str
 description:        str
-confidence:         float
+confidence:         ConfidenceLevel — from Judge's verdict (HIGH/MEDIUM/LOW)
 recommendation:     str
 attacker_evidence:  str
 judge_reasoning:    str

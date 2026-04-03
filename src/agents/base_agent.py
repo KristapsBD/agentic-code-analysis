@@ -82,8 +82,8 @@ class BaseAgent(ABC):
     Abstract base class for all agents.
 
     Provides common functionality for interacting with LLM providers
-    and managing conversation context with token budget awareness
-    and sliding window history.
+    and managing conversation history. History is accumulated within a
+    single claim's debate and cleared between claims via clear_history().
     """
 
     def __init__(

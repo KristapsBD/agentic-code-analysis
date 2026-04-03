@@ -87,7 +87,7 @@ python -m src.main analyze <CONTRACT_PATH> [OPTIONS]
 | `--rounds` | `-r` | `2` | Debate rounds per claim (1–5) |
 | `--output` | `-o` | auto | Output path for JSON + Markdown report |
 | `--verbose` | `-v` | off | Print agent dialogue to console |
-| `--web-search` | `-w` | off | Enable built-in web search grounding (Anthropic: `web_search_20260209`; Gemini: Google Search grounding) |
+| `--web-search` | `-w` | on | Enable built-in web search grounding (Anthropic: `web_search_20260209`; Gemini: Google Search grounding). Use `--no-web-search` to disable. |
 
 ```bash
 # Quick scan with Gemini

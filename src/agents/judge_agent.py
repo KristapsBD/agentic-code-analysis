@@ -262,8 +262,8 @@ class JudgeAgent(BaseAgent):
             is_valid=is_valid,
             severity=severity,
             confidence=confidence,
-            reasoning=str(parsed.get("reasoning", "No detailed reasoning provided"))[:500],
-            recommendation=str(parsed.get("recommendation", "Review and address as needed"))[:300],
+            reasoning=str(parsed.get("reasoning", "No detailed reasoning provided")),
+            recommendation=str(parsed.get("recommendation", "Review and address as needed")),
             attacker_score=attacker_score,
             defender_score=defender_score,
         )
@@ -363,8 +363,8 @@ class JudgeAgent(BaseAgent):
             is_valid=is_valid,
             severity=severity,
             confidence=confidence,
-            reasoning=reasoning[:500] if reasoning else "No detailed reasoning provided",
-            recommendation=recommendation[:300] if recommendation else "Review and address as needed",
+            reasoning=reasoning if reasoning else "No detailed reasoning provided",
+            recommendation=recommendation if recommendation else "Review and address as needed",
             attacker_score=attacker_score,
             defender_score=defender_score,
         )

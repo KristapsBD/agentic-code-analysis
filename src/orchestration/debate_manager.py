@@ -173,8 +173,7 @@ class DebateManager:
         judge_clarification_trigger: ConfidenceLevel = ConfidenceLevel.LOW,
         verbose: bool = False,
         console: Optional[Console] = None,
-        # TODO: enable web_search=True by default once cost impact is understood
-        web_search: bool = False,
+        web_search: bool = True,
     ):
         """
         Initialize the Debate Manager.
@@ -189,7 +188,7 @@ class DebateManager:
             web_search: When True, all three agents can search the web on every LLM
                         call via the provider's built-in search tool (Google Search
                         grounding for Gemini, web_search_20260209 for Anthropic).
-                        Has no effect on OpenAI. Disabled by default.
+                        Has no effect on OpenAI. Enabled by default.
         """
         self.provider = provider
         self.max_rounds = max_rounds
@@ -265,7 +264,7 @@ class DebateManager:
                 logger.debug(
                     f"  Claim {i+1}/{len(result.initial_claims)}: "
                     f"[{claim.severity.upper()}] {claim.vulnerability_type} "
-                    f"@ {claim.location} (confidence={claim.confidence:.2f})"
+                    f"@ {claim.location} (confidence={claim.confidence.value})"
                 )
                 logger.debug(f"    Description: {claim.description}")
                 logger.debug(f"    Evidence:    {claim.evidence[:300]}")
@@ -304,7 +303,7 @@ class DebateManager:
             result.claim_results.append(claim_result)
             logger.info(
                 f"Claim {i+1} verdict: {'CONFIRMED' if claim_result.verdict.is_valid else 'REJECTED'} "
-                f"(judge_confidence={claim_result.verdict.confidence:.2f}, "
+                f"(judge_confidence={claim_result.verdict.confidence.value}, "
                 f"rounds={claim_result.debate_rounds}, "
                 f"attacker_conceded={claim_result.attacker_conceded})"
             )
