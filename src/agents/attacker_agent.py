@@ -183,8 +183,22 @@ class AttackerAgent(BaseAgent):
         # Handle both direct vulnerabilities list and wrapped format
         vuln_list = parsed.get("vulnerabilities", [])
         if not vuln_list and parsed.get("raw_content"):
-            # Fallback: try to parse from raw content if JSON parsing failed
-            vuln_list = self._fallback_parse_claims(parsed["raw_content"])
+            raw = parsed["raw_content"]
+            # First try to extract JSON directly from the raw content (common when
+            # _parse_json_response fails on an otherwise valid JSON string that
+            # contains embedded escaping or markdown that confused the outer parser).
+            try:
+                import json as _json
+                brace_start = raw.find("{")
+                brace_end = raw.rfind("}")
+                if brace_start != -1 and brace_end > brace_start:
+                    candidate = _json.loads(raw[brace_start:brace_end + 1])
+                    vuln_list = candidate.get("vulnerabilities", [])
+            except Exception:
+                pass
+            # If JSON re-extraction also failed, try the line-by-line text parser
+            if not vuln_list:
+                vuln_list = self._fallback_parse_claims(raw)
 
         for item in vuln_list:
             claim = self._dict_to_claim(item)

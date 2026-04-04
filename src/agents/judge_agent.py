@@ -283,13 +283,16 @@ class JudgeAgent(BaseAgent):
         """
         response_upper = raw_content.upper()
 
-        # Determine validity
+        # Determine validity — check both plain-text and JSON-style verdict patterns
         is_valid = False
-        if "VERDICT: VALID" in response_upper or "VERDICT: VULNERABLE" in response_upper:
+        raw_lower = raw_content.lower()
+        if "verdict: valid" in raw_lower or "verdict: vulnerable" in raw_lower:
             is_valid = True
-        elif "VERDICT: INVALID" in response_upper or "VERDICT: NOT VULNERABLE" in response_upper:
+        elif '"verdict": "valid' in raw_lower or "'verdict': 'valid" in raw_lower:
+            is_valid = True
+        elif "verdict: invalid" in raw_lower or "verdict: not vulnerable" in raw_lower or "verdict: not_vulnerable" in raw_lower:
             is_valid = False
-        elif "VERDICT: NOT_VULNERABLE" in response_upper:
+        elif '"verdict": "not_vulnerable' in raw_lower or '"verdict": "invalid' in raw_lower:
             is_valid = False
         else:
             vuln_indicators = ["is vulnerable", "vulnerability exists", "confirms the", "valid vulnerability"]

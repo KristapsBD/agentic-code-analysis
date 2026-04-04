@@ -20,46 +20,29 @@ VULNERABILITY_TYPES = [
     "upgradeable_proxy",
 ]
 
-ATTACKER_SYSTEM_PROMPT = """You are an expert smart contract security auditor acting as the ATTACKER in an adversarial audit system.
+ATTACKER_SYSTEM_PROMPT = """You are an expert smart contract security auditor acting as the ATTACKER in an adversarial audit system. Identify genuine, exploitable vulnerabilities with concrete code evidence and a traceable exploit path.
 
-Your role is to identify the most impactful, directly exploitable vulnerabilities. Precision matters: every finding you report must have a clear, concrete exploit path grounded in the actual code. The Defender and Judge will validate your findings — flooding them with speculative or secondary issues wastes rounds and dilutes the signal on real vulnerabilities.
+KEY TECHNICAL FACTS — apply these unconditionally:
+- send() and transfer() forward exactly 2300 gas. This is not enough for reentrancy. Only .call{value}() or token interface calls (ERC-20 transferFrom hooks, etc.) can enable reentrancy. If all external value transfers use send()/transfer(), reentrancy is impossible.
+- Solidity < 0.8: arithmetic silently wraps on overflow/underflow. Only a vulnerability if unprotected by SafeMath or manual bounds checks.
+- Solidity >= 0.8: arithmetic reverts by default; only vulnerable inside an unchecked{} block.
+- Solidity < 0.5: constructors are named functions. A function that sets ownership state (e.g., owner = msg.sender) but has a different name than its contract is a public callable function — any caller can invoke it to seize ownership.
+- A fallback function that does address.delegatecall(msg.data) is a delegatecall storage-collision vulnerability (type: delegatecall), not access_control.
+- Variable shadowing: if a derived contract re-declares a base contract's state variable, they occupy different storage slots. An init function that sets the derived slot does not bypass a modifier checking the base slot.
 
-EXPERTISE AREAS:
-- Reentrancy (classic, cross-function, cross-contract, read-only reentrancy)
-- Access control flaws (tx.origin authentication, missing role checks, privilege escalation)
-- Arithmetic errors (overflow/underflow in pre-0.8 code; unchecked{} blocks in 0.8+)
-- Unchecked external call return values
-- Delegatecall and proxy storage collision
-- Denial of service (unbounded loops, gas griefing, forced ETH via selfdestruct)
-- Time manipulation — ONLY when contract logic produces materially different outcomes within the ~15-second miner timestamp drift window (e.g., a lottery or auction that pays out based on block.timestamp where a 15s shift changes who wins)
-- Bad randomness — ONLY when the contract explicitly generates a random value using on-chain sources (block.timestamp, blockhash, block.difficulty) and uses it to determine a non-trivial outcome (e.g., lottery winner, rare NFT trait)
-- Signature replay — ONLY when the contract verifies off-chain signatures via ecrecover or EIP-712 and is missing nonce or chainId protection
-- Upgradeable proxy risks — ONLY when the contract is explicitly a proxy or implementation contract (UUPS, Transparent, or Beacon pattern) with uninitialized implementations or storage layout collisions
+INVESTIGATION CHECKLIST — evaluate these types in order before selecting your primary finding:
+1. reentrancy: is there a .call{value}() or token interface call that executes before state is fully updated?
+2. access_control: can an unauthorized caller invoke a state-changing function to seize ownership or bypass auth? (include misnamed constructors in Solidity < 0.5, and unprotected initX() on library contracts used via delegatecall)
+3. unchecked_calls: is any send(), call(), or low-level call's boolean return value never read?
+4. denial_of_service: is there an unbounded loop over a user-controlled array, a push-payment pattern where a failing recipient blocks all future payouts, or a storage array that is cleared by reassignment (`array = new T[](0)` in Solidity 0.4) after growing unboundedly — such reassignments zero every slot in storage and will OOG once the array is large enough?
+5. arithmetic: only if (1)–(4) are all absent
 
-BEHAVIORAL GUIDELINES:
-1. Be selective — report only findings with a direct, concrete exploit path. A pattern that "could theoretically" be abused without a clear attacker action is not a finding.
-2. Be evidence-driven — ground each finding in specific lines of code.
-3. Report the PRIMARY vulnerability — the one that poses the greatest risk and is most directly exploitable. Do not report every secondary issue in a contract; focus on the dominant vulnerability.
-4. Check the Solidity version carefully:
-   - Solidity < 0.8.0: arithmetic overflow/underflow is SILENT and wraps. ANY raw +, -, *, / that
-     is NOT wrapped in SafeMath is a potential overflow/underflow vulnerability.
-   - Solidity >= 0.8.0: overflow reverts by default; only flag if inside an unchecked{} block.
-5. For mixed codebases (some functions use SafeMath, others use raw operators): flag the single most critical unprotected operation.
-6. Do not flag a pattern as vulnerable if a specific mitigation in the code DIRECTLY and COMPLETELY blocks the exact exploit path you are describing.
-7. Type-specific gates — do NOT report these types unless the named condition is met:
-   - time_manipulation: contract outcome materially depends on block.timestamp within a 15s window
-   - bad_randomness: contract explicitly uses on-chain sources to generate a random outcome
-   - signature_replay: contract uses ecrecover or EIP-712 signatures
-   - upgradeable_proxy: contract is explicitly a proxy or upgradeable implementation
-
-SCORING GUIDANCE:
-- HIGH: Exploit path is clear, impact is certain, concrete code evidence
-- MEDIUM: Likely exploitable but depends on caller context or token behaviour
-- LOW: Pattern is suspicious and the exploit path is plausible but indirect
-- Only report findings with confidence MEDIUM or above
-
-DEDUPLICATION RULE:
-Report at most one finding per canonical vulnerability type. If the same type appears in multiple locations, report only the single most severe and most directly exploitable instance."""
+REPORTING RULES:
+- Report ONE finding — the most directly exploitable vulnerability from the checklist.
+- If any type from (1)–(4) is found, report that. Do not report a gated type (bad_randomness, time_manipulation, signature_replay, upgradeable_proxy) instead.
+- When multiple types from (1)–(4) are found: prefer access_control over reentrancy if the access_control finding lets any caller seize full contract ownership with no preconditions; prefer denial_of_service over unchecked_calls when the DoS comes from (a) a push-payment blocking pattern where a failing recipient prevents execution from continuing, OR (b) an unbounded storage operation (array clear via reassignment or unbounded iteration) that can OOG. Prefer unchecked_calls over denial_of_service ONLY when the DoS requires a numeric type overflow in a loop counter (e.g., uint8 counter iterating 256+ entries) — this is a setup-dependent precondition that makes unchecked external calls the more immediately exploitable finding.
+- Gated types: only report if the contract explicitly uses the named pattern (on-chain randomness source, ecrecover/EIP-712, proxy pattern, block.timestamp-dependent outcome).
+- Minimum confidence: MEDIUM. A pattern without a clear attacker action is not a finding."""
 
 SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vulnerabilities.
 
@@ -67,22 +50,25 @@ SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vuln
 {contract_code}
 ```
 
-For each vulnerability you identify, provide:
-1. Vulnerability type — use exactly one of the canonical labels below
-2. Severity (critical/high/medium/low)
-3. Exact location (function name and line number where possible)
-4. A concrete exploit path — the specific sequence of calls an attacker would make
-5. Direct code evidence — quote the specific lines that enable the exploit
-6. Your confidence level (HIGH, MEDIUM, or LOW)
+STEP 1 — Complete the investigation field. For each type, write "FOUND - <what and where>" or "NOT PRESENT - <why>":
+- reentrancy
+- access_control
+- unchecked_calls
+- denial_of_service
 
-CANONICAL TYPE LABELS (use exactly one per finding):
-{vulnerability_types}
+STEP 2 — Report your single primary finding. Pick the most impactful FOUND type from step 1. If all four are NOT PRESENT, check arithmetic (pre-0.8 unprotected operations). Report nothing if no genuine exploit path exists.
 
-Report only findings with confidence MEDIUM or above. For each canonical type, report the single most severe and most directly exploitable instance — do not list multiple occurrences of the same type. Focus on the PRIMARY vulnerability: the one dominant issue that poses the greatest risk to this specific contract. Only omit a finding entirely if an existing mitigation DIRECTLY and COMPLETELY blocks the specific exploit you are describing. For time_manipulation, bad_randomness, signature_replay, and upgradeable_proxy: only report if the contract actually uses the relevant pattern (block.timestamp for randomness/tight time logic, ecrecover/EIP-712 for signatures, proxy pattern for upgradeable_proxy).
+CANONICAL TYPE LABELS (use exactly one): {vulnerability_types}
 
-Respond with ONLY this JSON structure:
+Respond with ONLY this JSON:
 
 {{
+  "investigation": {{
+    "reentrancy": "FOUND - withdraw() calls msg.sender.call before zeroing balance[msg.sender]",
+    "access_control": "NOT PRESENT - all owner functions protected by onlyOwner",
+    "unchecked_calls": "NOT PRESENT - only .transfer() used",
+    "denial_of_service": "NOT PRESENT - no loops over user-controlled arrays"
+  }},
   "vulnerabilities": [
     {{
       "id": "vuln-1",
@@ -90,13 +76,13 @@ Respond with ONLY this JSON structure:
       "severity": "critical",
       "location": "withdraw() at line 42",
       "description": "External call executes before balance is zeroed, enabling recursive re-entry",
-      "evidence": "Line 42: (bool success,) = msg.sender.call{{value: amount}}(\"\"); precedes line 43: balance[msg.sender] = 0; — Exploit: (1) attacker calls withdraw(), (2) attacker fallback re-enters withdraw() before balance update, (3) full contract balance drained.",
+      "evidence": "Line 42: msg.sender.call{{value: amount}}() precedes line 43: balance[msg.sender] = 0. Exploit: attacker calls withdraw(), fallback re-enters before balance update, drains contract.",
       "confidence": "HIGH"
     }}
   ]
 }}
 
-If no vulnerabilities are found, return {{"vulnerabilities": []}}."""
+If no vulnerabilities meet the MEDIUM confidence bar, return {{"investigation": {{...}}, "vulnerabilities": []}}."""
 
 REBUTTAL_PROMPT_TEMPLATE = """The Defender has responded to your vulnerability claim.
 

@@ -193,6 +193,92 @@ class BenchmarkResult:
         correct = sum(1 for r in self.contract_results if r.binary_correct)
         return correct / len(self.contract_results)
 
+    # ------------------------------------------------------------------
+    # Detection metrics — binary vulnerable/safe on the full contract set
+    # ------------------------------------------------------------------
+
+    @property
+    def detection_true_positives(self) -> int:
+        """Contracts correctly flagged as vulnerable."""
+        return sum(
+            1 for r in self.contract_results
+            if r.binary_predicted_vulnerable and r.ground_truth.has_vulnerabilities
+        )
+
+    @property
+    def detection_false_positives(self) -> int:
+        """Clean contracts incorrectly flagged as vulnerable."""
+        return sum(
+            1 for r in self.contract_results
+            if r.binary_predicted_vulnerable and not r.ground_truth.has_vulnerabilities
+        )
+
+    @property
+    def detection_false_negatives(self) -> int:
+        """Vulnerable contracts missed entirely."""
+        return sum(
+            1 for r in self.contract_results
+            if not r.binary_predicted_vulnerable and r.ground_truth.has_vulnerabilities
+        )
+
+    @property
+    def detection_precision(self) -> float:
+        tp, fp = self.detection_true_positives, self.detection_false_positives
+        return tp / (tp + fp) if (tp + fp) > 0 else 0.0
+
+    @property
+    def detection_recall(self) -> float:
+        tp, fn = self.detection_true_positives, self.detection_false_negatives
+        return tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+    @property
+    def detection_f1(self) -> float:
+        p, r = self.detection_precision, self.detection_recall
+        return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+
+    # ------------------------------------------------------------------
+    # Classification metrics — type accuracy on vulnerable contracts only
+    # ------------------------------------------------------------------
+
+    @property
+    def classification_true_positives(self) -> int:
+        """Type-level TPs restricted to contracts with known vulnerabilities."""
+        return sum(
+            r.true_positives for r in self.contract_results
+            if r.ground_truth.has_vulnerabilities
+        )
+
+    @property
+    def classification_false_positives(self) -> int:
+        """Type-level FPs restricted to contracts with known vulnerabilities."""
+        return sum(
+            r.false_positives for r in self.contract_results
+            if r.ground_truth.has_vulnerabilities
+        )
+
+    @property
+    def classification_false_negatives(self) -> int:
+        """Type-level FNs restricted to contracts with known vulnerabilities."""
+        return sum(
+            r.false_negatives for r in self.contract_results
+            if r.ground_truth.has_vulnerabilities
+        )
+
+    @property
+    def classification_precision(self) -> float:
+        tp, fp = self.classification_true_positives, self.classification_false_positives
+        return tp / (tp + fp) if (tp + fp) > 0 else 0.0
+
+    @property
+    def classification_recall(self) -> float:
+        tp, fn = self.classification_true_positives, self.classification_false_negatives
+        return tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+    @property
+    def classification_f1(self) -> float:
+        p, r = self.classification_precision, self.classification_recall
+        return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+
     def to_dict(self) -> dict:
         """Convert to dictionary format."""
         return {
@@ -212,11 +298,23 @@ class BenchmarkResult:
                 "micro_recall": self.micro_recall,
                 "micro_f1": self.micro_f1,
                 "binary_accuracy": self.binary_accuracy,
+                "detection_precision": self.detection_precision,
+                "detection_recall": self.detection_recall,
+                "detection_f1": self.detection_f1,
+                "classification_precision": self.classification_precision,
+                "classification_recall": self.classification_recall,
+                "classification_f1": self.classification_f1,
             },
             "totals": {
                 "true_positives": self.total_true_positives,
                 "false_positives": self.total_false_positives,
                 "false_negatives": self.total_false_negatives,
+                "detection_true_positives": self.detection_true_positives,
+                "detection_false_positives": self.detection_false_positives,
+                "detection_false_negatives": self.detection_false_negatives,
+                "classification_true_positives": self.classification_true_positives,
+                "classification_false_positives": self.classification_false_positives,
+                "classification_false_negatives": self.classification_false_negatives,
             },
             "provider": self.provider,
             "model": self.model,
@@ -237,8 +335,8 @@ class Evaluator:
         "reentrancy": ["reentrancy", "re-entrancy", "reentrant"],
         "access_control": ["access_control", "access-control", "authorization", "unprotected", "privilege"],
         "arithmetic": ["arithmetic", "integer_overflow", "integer_underflow", "overflow", "underflow", "safeMath"],
-        "unchecked_calls": ["unchecked_call", "unchecked_return", "unchecked_low_level", "return_value"],
-        "denial_of_service": ["dos", "denial_of_service", "denial-of-service", "gas_griefing", "unbounded_loop"],
+        "unchecked_calls": ["unchecked_call", "unchecked_return", "unchecked_low_level", "return_value", "unchecked_send", "unsafe_send", "ignored_return"],
+        "denial_of_service": ["dos", "denial_of_service", "denial-of-service", "gas_griefing", "unbounded_loop", "lock_of_ether", "locked_ether"],
         "time_manipulation": ["time_manipulation", "timestamp", "block_timestamp", "block_number"],
         "bad_randomness": ["randomness", "bad_randomness", "weak_randomness", "predictable_random"],
         "signature_replay": ["signature_replay", "replay_attack", "missing_nonce", "malleab"],
@@ -685,43 +783,48 @@ class Evaluator:
             sign = "+" if diff > 0 else ""
             return f"[{color}]{sign}{diff}[/{color}]"
 
-        float_rows = [
-            ("Binary Accuracy", multi.binary_accuracy, two_agent.binary_accuracy, baseline.binary_accuracy, True),
-            ("Micro Precision", multi.micro_precision, two_agent.micro_precision, baseline.micro_precision, True),
-            ("Micro Recall",    multi.micro_recall,    two_agent.micro_recall,    baseline.micro_recall,    True),
-            ("Micro F1",        multi.micro_f1,        two_agent.micro_f1,        baseline.micro_f1,        True),
-            ("Macro Precision", multi.macro_precision, two_agent.macro_precision, baseline.macro_precision, True),
-            ("Macro Recall",    multi.macro_recall,    two_agent.macro_recall,    baseline.macro_recall,    True),
-            ("Macro F1",        multi.macro_f1,        two_agent.macro_f1,        baseline.macro_f1,        True),
-        ]
+        def _row(label, mv, tv, bv, higher=True, fmt="pct"):
+            if fmt == "pct":
+                table.add_row(label, f"{mv:.2%}", _delta(mv, tv, higher),
+                              f"{tv:.2%}", _delta(tv, bv, higher), f"{bv:.2%}")
+            else:
+                table.add_row(label, str(mv), _int_delta(mv, tv, higher),
+                              str(tv), _int_delta(tv, bv, higher), str(bv))
 
-        for label, mv, tv, bv, higher in float_rows:
-            table.add_row(
-                label,
-                f"{mv:.2%}",
-                _delta(mv, tv, higher),
-                f"{tv:.2%}",
-                _delta(tv, bv, higher),
-                f"{bv:.2%}",
-            )
+        def _blank():
+            table.add_row("", "", "", "", "", "")
 
-        table.add_row("", "", "", "", "", "")
+        _blank()
+        table.add_row("── DETECTION ──", "", "", "", "", "")
+        _row("Det Precision",  multi.detection_precision,  two_agent.detection_precision,  baseline.detection_precision)
+        _row("Det Recall",     multi.detection_recall,     two_agent.detection_recall,     baseline.detection_recall)
+        _row("Det F1",         multi.detection_f1,         two_agent.detection_f1,         baseline.detection_f1)
+        _row("Det TP",         multi.detection_true_positives,  two_agent.detection_true_positives,  baseline.detection_true_positives,  True,  "int")
+        _row("Det FP (alarms)",multi.detection_false_positives, two_agent.detection_false_positives, baseline.detection_false_positives, False, "int")
+        _row("Det FN (missed)",multi.detection_false_negatives, two_agent.detection_false_negatives, baseline.detection_false_negatives, False, "int")
 
-        int_rows = [
-            ("True Positives",  multi.total_true_positives,  two_agent.total_true_positives,  baseline.total_true_positives,  True),
-            ("False Positives", multi.total_false_positives, two_agent.total_false_positives, baseline.total_false_positives, False),
-            ("False Negatives", multi.total_false_negatives, two_agent.total_false_negatives, baseline.total_false_negatives, False),
-        ]
+        _blank()
+        table.add_row("── CLASSIFICATION (vuln only) ──", "", "", "", "", "")
+        _row("Cls Precision",  multi.classification_precision,  two_agent.classification_precision,  baseline.classification_precision)
+        _row("Cls Recall",     multi.classification_recall,     two_agent.classification_recall,     baseline.classification_recall)
+        _row("Cls F1",         multi.classification_f1,         two_agent.classification_f1,         baseline.classification_f1)
+        _row("Cls TP",         multi.classification_true_positives,  two_agent.classification_true_positives,  baseline.classification_true_positives,  True,  "int")
+        _row("Cls FP",         multi.classification_false_positives, two_agent.classification_false_positives, baseline.classification_false_positives, False, "int")
+        _row("Cls FN",         multi.classification_false_negatives, two_agent.classification_false_negatives, baseline.classification_false_negatives, False, "int")
 
-        for label, mv, tv, bv, higher in int_rows:
-            table.add_row(
-                label,
-                str(mv),
-                _int_delta(mv, tv, higher),
-                str(tv),
-                _int_delta(tv, bv, higher),
-                str(bv),
-            )
+        _blank()
+        table.add_row("── JOINT (type, all) ──", "", "", "", "", "")
+        _row("Binary Accuracy", multi.binary_accuracy, two_agent.binary_accuracy, baseline.binary_accuracy)
+        _row("Micro Precision", multi.micro_precision, two_agent.micro_precision, baseline.micro_precision)
+        _row("Micro Recall",    multi.micro_recall,    two_agent.micro_recall,    baseline.micro_recall)
+        _row("Micro F1",        multi.micro_f1,        two_agent.micro_f1,        baseline.micro_f1)
+        _row("Macro F1",        multi.macro_f1,        two_agent.macro_f1,        baseline.macro_f1)
+
+        _blank()
+        table.add_row("── JOINT counts ──", "", "", "", "", "")
+        _row("True Positives",  multi.total_true_positives,  two_agent.total_true_positives,  baseline.total_true_positives,  True,  "int")
+        _row("False Positives", multi.total_false_positives, two_agent.total_false_positives, baseline.total_false_positives, False, "int")
+        _row("False Negatives", multi.total_false_negatives, two_agent.total_false_negatives, baseline.total_false_negatives, False, "int")
 
         console.print(table)
 
@@ -739,12 +842,25 @@ class Evaluator:
         summary.add_row("Successful", str(result.successful_analyses))
         summary.add_row("Failed", str(result.failed_analyses))
         summary.add_row("", "")
-        summary.add_row("True Positives", str(result.total_true_positives))
-        summary.add_row("False Positives", str(result.total_false_positives))
-        summary.add_row("False Negatives", str(result.total_false_negatives))
+        summary.add_row("── DETECTION (binary) ──", "")
+        summary.add_row("Detected / Missed / False Alarm",
+                        f"{result.detection_true_positives} / "
+                        f"{result.detection_false_negatives} / "
+                        f"{result.detection_false_positives}")
+        summary.add_row("Detection Precision", f"{result.detection_precision:.2%}")
+        summary.add_row("Detection Recall",    f"{result.detection_recall:.2%}")
+        summary.add_row("Detection F1",        f"{result.detection_f1:.2%}")
         summary.add_row("", "")
+        summary.add_row("── CLASSIFICATION (type, vuln contracts only) ──", "")
+        summary.add_row("True Positives", str(result.classification_true_positives))
+        summary.add_row("False Positives", str(result.classification_false_positives))
+        summary.add_row("False Negatives", str(result.classification_false_negatives))
+        summary.add_row("Classification Precision", f"{result.classification_precision:.2%}")
+        summary.add_row("Classification Recall",    f"{result.classification_recall:.2%}")
+        summary.add_row("Classification F1",        f"{result.classification_f1:.2%}")
+        summary.add_row("", "")
+        summary.add_row("── JOINT (type, all contracts) ──", "")
         summary.add_row("Binary Accuracy", f"{result.binary_accuracy:.2%}")
-        summary.add_row("", "")
         summary.add_row("Micro Precision", f"{result.micro_precision:.2%}")
         summary.add_row("Micro Recall", f"{result.micro_recall:.2%}")
         summary.add_row("Micro F1", f"{result.micro_f1:.2%}")
