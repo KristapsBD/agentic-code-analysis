@@ -173,7 +173,7 @@ class DebateManager:
         judge_clarification_trigger: ConfidenceLevel = ConfidenceLevel.LOW,
         verbose: bool = False,
         console: Optional[Console] = None,
-        web_search: bool = True,
+        web_search: bool = False,
     ):
         """
         Initialize the Debate Manager.

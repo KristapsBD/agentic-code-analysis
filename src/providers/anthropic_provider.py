@@ -29,8 +29,9 @@ logger = logging.getLogger(__name__)
 _WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 
 # Anthropic's messages API requires max_tokens to be set explicitly.
-# 64000 is the maximum output token limit for current Claude models.
-_ANTHROPIC_MAX_TOKENS = 64000
+# Audit JSON responses are well under 4K tokens; 8192 gives headroom without
+# triggering the SDK's streaming requirement (enforced above ~10 min requests).
+_ANTHROPIC_MAX_TOKENS = 8192
 
 
 class AnthropicProvider(BaseLLMProvider):
