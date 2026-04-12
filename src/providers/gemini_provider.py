@@ -1,16 +1,4 @@
-"""
-Google Gemini LLM provider implementation.
-
-Implements the BaseLLMProvider interface for Google's Gemini API.
-Uses the official google-genai SDK (v1.0.0+) with proper Content/Part
-objects for correct multi-turn conversation handling.
-
-Web search is enabled via Google Search grounding — pass web_search=True
-to complete(). Gemini executes the search transparently server-side;
-no client-side round-trips or result handling are required.
-
-Reference: https://ai.google.dev/gemini-api/docs/google-search
-"""
+"""Google Gemini LLM provider using the google-genai SDK with Google Search grounding support."""
 
 import asyncio
 import logging
@@ -23,15 +11,11 @@ from src.providers.base_provider import BaseLLMProvider, LLMResponse, Message
 
 logger = logging.getLogger(__name__)
 
+_SEP = "─" * 60
+
 
 class GeminiProvider(BaseLLMProvider):
-    """
-    Google Gemini LLM provider.
-
-    Uses proper Content/Part objects for all messages, enabling correct
-    multi-turn conversation history. Pass web_search=True to complete()
-    to enable Google Search grounding.
-    """
+    """Google Gemini provider with proper multi-turn Content/Part message handling."""
 
     def __init__(
         self,
@@ -55,20 +39,7 @@ class GeminiProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Send messages to Gemini and get a response.
-
-        Args:
-            messages: List of messages in the conversation.
-            temperature: Optional override for sampling temperature.
-            web_search: When True, enables Google Search grounding. Gemini
-                        will search the web when needed and incorporate results
-                        into its response automatically.
-            json_mode: When True, sets response_mime_type="application/json" so
-                       Gemini is forced to emit valid JSON at the API level rather
-                       than relying solely on prompt instructions. Disabled
-                       automatically when web_search=True (incompatible).
-        """
+        """Send messages to Gemini; json_mode is disabled when web_search=True (incompatible)."""
         self._validate_messages(messages)
 
         system_instruction, contents = self._build_contents(messages)
@@ -87,7 +58,6 @@ class GeminiProvider(BaseLLMProvider):
         config = types.GenerateContentConfig(**config_kwargs)
 
         if logger.isEnabledFor(logging.DEBUG):
-            _SEP = "─" * 60
             logger.debug(
                 f"[Gemini] → Request: model={self.model}, "
                 f"content_turns={len(contents)}, web_search={web_search}, "
@@ -100,7 +70,6 @@ class GeminiProvider(BaseLLMProvider):
 
         content = self._extract_text(response)
 
-        # Log whether web search was actually invoked
         if web_search:
             grounding = None
             if response.candidates:
@@ -134,7 +103,7 @@ class GeminiProvider(BaseLLMProvider):
             response.candidates[0] if response.candidates else None,
             "finish_reason", None,
         )
-        # Normalise to a plain string (Gemini returns an enum like FinishReason.STOP)
+        # Gemini returns an enum (FinishReason.STOP); normalise to plain string
         if finish_reason_raw is None:
             finish_reason = "stop"
         elif hasattr(finish_reason_raw, "name"):
@@ -143,7 +112,6 @@ class GeminiProvider(BaseLLMProvider):
             finish_reason = str(finish_reason_raw).lower()
 
         if logger.isEnabledFor(logging.DEBUG):
-            _SEP = "─" * 60
             logger.debug(
                 f"[Gemini] ← Response: {len(content)} chars | "
                 f"tokens: {total_tokens} total / {prompt_tokens} prompt / {completion_tokens} completion | "
@@ -169,14 +137,7 @@ class GeminiProvider(BaseLLMProvider):
         contents: list[types.Content],
         config: types.GenerateContentConfig,
     ) -> Any:
-        """
-        Attempt async API call with retry on rate limits.
-
-        Rate-limit errors (429 / ResourceExhausted) are retried with exponential
-        backoff via the base-class helper. All other errors fall back to a
-        sync-in-executor call (handles environments where the async client is
-        unavailable), after which the error is re-raised if it persists.
-        """
+        """Async API call with rate-limit retry; falls back to sync executor if async is unavailable."""
         async def _attempt() -> Any:
             try:
                 return await self.client.aio.models.generate_content(
@@ -204,14 +165,7 @@ class GeminiProvider(BaseLLMProvider):
     def _build_contents(
         messages: list[Message],
     ) -> tuple[Optional[str], list[types.Content]]:
-        """
-        Convert Message list to Gemini Content objects.
-
-        Gemini requires:
-        - system prompt as system_instruction (not a Content entry)
-        - user messages  → Content(role="user",  parts=[Part.from_text(...)])
-        - assistant msgs → Content(role="model", parts=[Part.from_text(...)])
-        """
+        """Convert Messages to Gemini Content objects, extracting the system prompt separately."""
         system_instruction: Optional[str] = None
         contents: list[types.Content] = []
 

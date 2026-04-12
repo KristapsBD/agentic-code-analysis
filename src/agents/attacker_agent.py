@@ -1,10 +1,6 @@
-"""
-Attacker Agent implementation.
+"""Attacker Agent — aggressively scans smart contracts for potential vulnerabilities."""
 
-The Attacker Agent aggressively scans smart contract code for potential
-vulnerabilities, acting as a security auditor trying to find flaws.
-"""
-
+import json
 import logging
 import uuid
 from typing import Any
@@ -24,22 +20,9 @@ logger = logging.getLogger(__name__)
 
 
 class AttackerAgent(BaseAgent):
-    """
-    Attacker Agent that scans for vulnerabilities.
-
-    This agent takes an aggressive stance, flagging any code patterns
-    that could potentially be exploited. It prioritizes sensitivity
-    over specificity (better to flag a false positive than miss a real bug).
-    """
+    """Scans for vulnerabilities, prioritizing sensitivity over specificity."""
 
     def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
-        """
-        Initialize the Attacker Agent.
-
-        Args:
-            provider: LLM provider for generating responses
-            web_search: Whether to enable built-in web search on every LLM call
-        """
         super().__init__(
             provider=provider,
             name="Attacker",
@@ -49,16 +32,7 @@ class AttackerAgent(BaseAgent):
         )
 
     async def analyze(self, context: dict) -> AgentResponse:
-        """
-        Scan the contract for vulnerabilities.
-
-        Args:
-            context: Dictionary containing:
-                - contract_code: The smart contract source code
-
-        Returns:
-            AgentResponse containing vulnerability claims
-        """
+        """Scan the contract for vulnerabilities."""
         contract_code = context.get("contract_code", "")
 
         prompt = SCAN_PROMPT_TEMPLATE.format(
@@ -68,12 +42,11 @@ class AttackerAgent(BaseAgent):
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_attacker_scan)
 
-        # Extract claims from the structured JSON response
         claims = self._extract_claims(parsed)
 
         return AgentResponse(
             agent_role=self.role,
-            content=str(parsed),
+            content=parsed.get("raw_content", str(parsed)),
             claims=claims,
             reasoning="Initial vulnerability scan completed",
             confidence=ConfidenceLevel.HIGH,
@@ -83,21 +56,7 @@ class AttackerAgent(BaseAgent):
         )
 
     async def respond_to_defense(self, context: dict) -> AgentResponse:
-        """
-        Respond to the Defender's arguments.
-
-        The Attacker can either:
-        - Provide additional evidence to support their claim
-        - Concede if the Defender's argument is valid
-
-        Args:
-            context: Dictionary containing:
-                - original_claim: The original vulnerability claim
-                - defense_argument: The Defender's counter-argument
-
-        Returns:
-            AgentResponse with rebuttal or concession
-        """
+        """Respond to the Defender's arguments with a rebuttal or concession."""
         claim = context.get("original_claim", {})
         defense = context.get("defense_argument", "")
 
@@ -111,14 +70,13 @@ class AttackerAgent(BaseAgent):
 
         parsed = await self._send_message_json(prompt, include_history=True, temperature=settings.temp_debate)
 
-        # Determine if this is a rebuttal or concession from structured output
         verdict = parsed.get("verdict", "REBUTTAL").upper()
         is_concession = "CONCEDE" in verdict
         confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.MEDIUM)
 
         return AgentResponse(
             agent_role=self.role,
-            content=parsed.get("reasoning", str(parsed)),
+            content=parsed.get("reasoning", parsed.get("raw_content", str(parsed))),
             claims=[],
             reasoning="Concession" if is_concession else "Rebuttal",
             confidence=confidence,
@@ -130,17 +88,7 @@ class AttackerAgent(BaseAgent):
         )
 
     async def respond_to_clarification(self, context: dict) -> AgentResponse:
-        """
-        Respond to a clarification request from the Judge.
-
-        Args:
-            context: Dictionary containing:
-                - original_claim: The original vulnerability claim
-                - judge_question: The Judge's specific question
-
-        Returns:
-            AgentResponse with targeted answer to the Judge's question
-        """
+        """Respond to the Judge's clarification question."""
         claim = context.get("original_claim", {})
         judge_question = context.get("judge_question", "")
 
@@ -157,7 +105,7 @@ class AttackerAgent(BaseAgent):
 
         return AgentResponse(
             agent_role=self.role,
-            content=parsed.get("answer", str(parsed)),
+            content=parsed.get("answer", parsed.get("raw_content", str(parsed))),
             claims=[],
             reasoning="Clarification response",
             confidence=confidence,
@@ -169,34 +117,22 @@ class AttackerAgent(BaseAgent):
         )
 
     def _extract_claims(self, parsed: dict[str, Any]) -> list[VulnerabilityClaim]:
-        """
-        Extract vulnerability claims from the parsed JSON response.
-
-        Args:
-            parsed: Parsed JSON dictionary from the LLM response
-
-        Returns:
-            List of VulnerabilityClaim objects
-        """
+        """Extract VulnerabilityClaim objects from a parsed LLM response dict."""
         claims: list[VulnerabilityClaim] = []
 
-        # Handle both direct vulnerabilities list and wrapped format
         vuln_list = parsed.get("vulnerabilities", [])
         if not vuln_list and parsed.get("raw_content"):
             raw = parsed["raw_content"]
-            # First try to extract JSON directly from the raw content (common when
-            # _parse_json_response fails on an otherwise valid JSON string that
-            # contains embedded escaping or markdown that confused the outer parser).
+            # Try re-parsing JSON from raw content before falling back to line-by-line parser.
+            # This handles cases where _parse_json_response failed on embedded escaping/markdown.
             try:
-                import json as _json
                 brace_start = raw.find("{")
                 brace_end = raw.rfind("}")
                 if brace_start != -1 and brace_end > brace_start:
-                    candidate = _json.loads(raw[brace_start:brace_end + 1])
+                    candidate = json.loads(raw[brace_start:brace_end + 1])
                     vuln_list = candidate.get("vulnerabilities", [])
             except Exception:
                 pass
-            # If JSON re-extraction also failed, try the line-by-line text parser
             if not vuln_list:
                 vuln_list = self._fallback_parse_claims(raw)
 
@@ -208,15 +144,7 @@ class AttackerAgent(BaseAgent):
         return claims
 
     def _dict_to_claim(self, data: dict[str, Any]) -> VulnerabilityClaim | None:
-        """
-        Convert a dictionary to a VulnerabilityClaim.
-
-        Args:
-            data: Dictionary with vulnerability data
-
-        Returns:
-            VulnerabilityClaim or None if conversion fails
-        """
+        """Convert a dict to a VulnerabilityClaim, returning None on failure."""
         try:
             return VulnerabilityClaim(
                 id=data.get("id", str(uuid.uuid4())[:8]),
@@ -231,17 +159,7 @@ class AttackerAgent(BaseAgent):
             return None
 
     def _fallback_parse_claims(self, raw_content: str) -> list[dict[str, Any]]:
-        """
-        Fallback parser for when JSON parsing fails.
-
-        Attempts to extract vulnerability information from unstructured text.
-
-        Args:
-            raw_content: Raw text content from the LLM
-
-        Returns:
-            List of vulnerability dictionaries
-        """
+        """Extract vulnerability dicts from unstructured text when JSON parsing fails."""
         claims: list[dict[str, Any]] = []
         current_claim: dict[str, Any] = {}
 
@@ -266,7 +184,6 @@ class AttackerAgent(BaseAgent):
             elif upper_line.startswith("CONFIDENCE:"):
                 current_claim["confidence"] = line.split(":", 1)[1].strip()
 
-        # Don't forget the last claim
         if current_claim and current_claim.get("vulnerability_type"):
             claims.append(current_claim)
 

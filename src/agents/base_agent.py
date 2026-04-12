@@ -1,9 +1,4 @@
-"""
-Abstract base class for all agents in the system.
-
-Defines the common interface and shared functionality
-for Attacker, Defender, and Judge agents.
-"""
+"""Abstract base class for all agents in the system."""
 
 import json
 import logging
@@ -40,7 +35,6 @@ class VulnerabilityClaim:
     confidence: ConfidenceLevel
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format."""
         return {
             "id": self.id,
             "vulnerability_type": self.vulnerability_type,
@@ -65,7 +59,6 @@ class AgentResponse:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format."""
         return {
             "agent_role": self.agent_role.value,
             "content": self.content,
@@ -78,12 +71,9 @@ class AgentResponse:
 
 
 class BaseAgent(ABC):
-    """
-    Abstract base class for all agents.
+    """Base class for Attacker, Defender, and Judge agents.
 
-    Provides common functionality for interacting with LLM providers
-    and managing conversation history. History is accumulated within a
-    single claim's debate and cleared between claims via clear_history().
+    History accumulates within a single claim's debate and is cleared between claims.
     """
 
     def __init__(
@@ -103,16 +93,7 @@ class BaseAgent(ABC):
 
     @abstractmethod
     async def analyze(self, context: dict) -> AgentResponse:
-        """
-        Perform agent-specific analysis.
-
-        Args:
-            context: Dictionary containing analysis context
-                (contract code, previous claims, etc.)
-
-        Returns:
-            AgentResponse containing the agent's analysis
-        """
+        """Perform agent-specific analysis."""
         pass
 
     async def _send_message(
@@ -151,7 +132,6 @@ class BaseAgent(ABC):
                 f"{_SEP}\n{response.content}\n{_SEP}"
             )
 
-        # Store in history
         self.conversation_history.append(Message(role="user", content=user_message))
         self.conversation_history.append(Message(role="assistant", content=response.content))
 
@@ -163,23 +143,7 @@ class BaseAgent(ABC):
         include_history: bool = True,
         temperature: Optional[float] = None,
     ) -> dict[str, Any]:
-        """
-        Send a message and parse the response as JSON.
-
-        Appends a JSON instruction to the user message and attempts
-        to extract a valid JSON object from the response. Falls back
-        to wrapping the raw content if parsing fails.
-
-        Web search is controlled by self.web_search (set at agent construction).
-
-        Args:
-            user_message: The message to send
-            include_history: Whether to include conversation history
-            temperature: Optional temperature override
-
-        Returns:
-            Parsed JSON dictionary from the response
-        """
+        """Send a message and return the response parsed as JSON."""
         json_instruction = (
             "\n\nIMPORTANT: You MUST respond with valid JSON only. "
             "Do not include any text outside the JSON object. "
@@ -210,20 +174,7 @@ class BaseAgent(ABC):
 
     @staticmethod
     def _parse_json_response(response: str) -> dict[str, Any]:
-        """
-        Parse a JSON response from the LLM, handling common formatting issues.
-
-        Attempts direct parsing first, then tries to extract JSON from
-        markdown code blocks, and finally falls back to wrapping the raw
-        content in a dictionary.
-
-        Args:
-            response: The raw LLM response string
-
-        Returns:
-            Parsed dictionary
-        """
-        # Try direct JSON parse
+        """Parse a JSON response, trying direct parse → markdown extraction → brace extraction."""
         try:
             result = json.loads(response.strip())
             logger.debug("JSON parse strategy: direct parse succeeded")
@@ -231,7 +182,6 @@ class BaseAgent(ABC):
         except json.JSONDecodeError:
             pass
 
-        # Try extracting from markdown code blocks
         json_pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
         match = re.search(json_pattern, response)
         if match:
@@ -242,7 +192,6 @@ class BaseAgent(ABC):
             except json.JSONDecodeError:
                 pass
 
-        # Try finding a JSON object in the text
         brace_start = response.find("{")
         brace_end = response.rfind("}")
         if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
@@ -253,7 +202,6 @@ class BaseAgent(ABC):
             except json.JSONDecodeError:
                 pass
 
-        # Fallback: wrap raw content
         logger.warning("JSON parse strategy: all strategies failed — using raw_content fallback")
         return {"raw_content": response, "_parse_failed": True}
 
@@ -288,6 +236,5 @@ class BaseAgent(ABC):
         return claim.to_dict() if isinstance(claim, VulnerabilityClaim) else claim
 
     def clear_history(self) -> None:
-        """Clear the conversation history."""
         self.conversation_history = []
 

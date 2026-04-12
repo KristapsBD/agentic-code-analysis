@@ -1,17 +1,4 @@
-"""
-Anthropic LLM provider implementation.
-
-Implements the BaseLLMProvider interface for Anthropic's API,
-supporting Claude models with optional built-in web search.
-
-Web search is enabled via the web_search_20260209 server-side tool.
-Anthropic executes the search transparently; no client-side round-trips
-or tool executors are required. The tool requires a supported model
-(claude-sonnet-4-6, claude-opus-4-6, etc.) — see the Anthropic docs for
-the full list.
-
-Reference: https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool
-"""
+"""Anthropic LLM provider using web_search_20260209 for server-side web search."""
 
 import logging
 from typing import Optional
@@ -35,14 +22,7 @@ _ANTHROPIC_MAX_TOKENS = 8192
 
 
 class AnthropicProvider(BaseLLMProvider):
-    """
-    Anthropic LLM provider.
-
-    Uses the Anthropic API to generate completions using Claude models.
-    Pass web_search=True to complete() to enable real-time web grounding.
-    The default model (claude-sonnet-4-6) supports web search; older models
-    such as claude-3-5-sonnet-20241022 do not.
-    """
+    """Anthropic provider; only claude-sonnet-4-6+ supports web_search=True."""
 
     def __init__(
         self,
@@ -64,21 +44,7 @@ class AnthropicProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Send messages to Anthropic and get a response.
-
-        Args:
-            messages: List of messages in the conversation.
-            temperature: Optional override for sampling temperature.
-            web_search: When True, enables Anthropic's built-in web search.
-                        Claude will search the web when needed and incorporate
-                        results into its response automatically.
-            json_mode: Accepted for interface compatibility but has no effect on
-                       Anthropic. JSON output is enforced via prompt instructions
-                       in _send_message_json. Anthropic has no schema-free JSON
-                       mode equivalent to OpenAI's json_object or Gemini's
-                       response_mime_type.
-        """
+        """Send messages to Anthropic; json_mode is a no-op (JSON enforced via prompt)."""
         self._validate_messages(messages)
 
         system_prompt = None
@@ -105,15 +71,13 @@ class AnthropicProvider(BaseLLMProvider):
             lambda: self.client.messages.create(**request_kwargs)
         )
 
-        # Extract text from content blocks; ignore non-text blocks (e.g. web
-        # search result blocks that Anthropic may include in the response)
+        # Ignore non-text blocks (e.g. web search result blocks)
         content = "".join(
             block.text
             for block in response.content
             if hasattr(block, "type") and block.type == "text"
         )
 
-        # Log whether web search was actually invoked
         if web_search:
             tool_blocks = [
                 b for b in response.content

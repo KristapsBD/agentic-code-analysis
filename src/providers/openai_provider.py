@@ -1,16 +1,4 @@
-"""
-OpenAI LLM provider implementation.
-
-Implements the BaseLLMProvider interface for OpenAI's API,
-supporting GPT-4 and other OpenAI models.
-
-Web search is enabled via the web_search_options parameter, which requires
-a search-capable model (gpt-4o-search-preview, gpt-4o-mini-search-preview).
-When web_search=True is requested with a non-search model the provider
-automatically uses gpt-4o-search-preview instead.
-
-Reference: https://developers.openai.com/api/docs/guides/tools-web-search/
-"""
+"""OpenAI LLM provider; automatically switches to a search-capable model when web_search=True."""
 
 import logging
 from typing import Optional
@@ -27,12 +15,7 @@ _DEFAULT_SEARCH_MODEL = "gpt-4o-search-preview"
 
 
 class OpenAIProvider(BaseLLMProvider):
-    """
-    OpenAI LLM provider.
-
-    Uses the OpenAI API to generate completions using models
-    like GPT-4o, GPT-4-turbo, etc.
-    """
+    """OpenAI LLM provider (GPT-4o, GPT-4-turbo, etc.)."""
 
     def __init__(
         self,
@@ -54,28 +37,11 @@ class OpenAIProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Send messages to OpenAI and get a response.
-
-        Args:
-            messages: List of messages in the conversation.
-            temperature: Optional override for sampling temperature.
-            web_search: When True, adds web_search_options to the request so the
-                        model can search the web before answering. Requires a
-                        search-capable model; if the configured model is not one,
-                        gpt-4o-search-preview is used automatically.
-                        Incompatible with json_mode — json_mode is ignored when
-                        web_search is True.
-            json_mode: When True, sets response_format={"type": "json_object"},
-                       instructing the model to return valid JSON. Requires the
-                       prompt to ask for JSON output as well. Ignored when
-                       web_search=True.
-        """
+        """Send messages to OpenAI; json_mode is ignored when web_search=True."""
         self._validate_messages(messages)
 
         openai_messages = [msg.to_dict() for msg in messages]
 
-        # Determine the model to use
         model = self.model
         if web_search and model not in _SEARCH_MODELS:
             logger.info(
@@ -92,7 +58,6 @@ class OpenAIProvider(BaseLLMProvider):
         if web_search:
             create_kwargs["web_search_options"] = {}
         elif json_mode:
-            # json_mode is incompatible with web_search_options
             create_kwargs["response_format"] = {"type": "json_object"}
 
         response = await self._with_retry(
@@ -102,7 +67,6 @@ class OpenAIProvider(BaseLLMProvider):
         choice = response.choices[0]
         usage = response.usage
 
-        # Log whether web search was actually used (citations appear in annotations)
         if web_search:
             annotations = getattr(choice.message, "annotations", None) or []
             citations = [a for a in annotations if getattr(a, "type", None) == "url_citation"]

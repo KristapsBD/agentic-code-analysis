@@ -1,9 +1,4 @@
-"""
-Defender Agent implementation.
-
-The Defender Agent acts as a developer advocate, reviewing vulnerability
-claims and providing counter-arguments when claims are invalid or exaggerated.
-"""
+"""Defender Agent — reviews vulnerability claims and provides counter-arguments."""
 
 import logging
 from typing import Any
@@ -22,24 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class DefenderAgent(BaseAgent):
-    """
-    Defender Agent that verifies vulnerability claims.
-
-    This agent takes the role of a developer, critically examining
-    vulnerability claims and providing counter-arguments. It looks for:
-    - Existing mitigations (modifiers, checks, guards)
-    - Context that invalidates the claim
-    - Misunderstandings of the code's intent
-    """
+    """Critically examines vulnerability claims, looking for mitigations and context that invalidates them."""
 
     def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
-        """
-        Initialize the Defender Agent.
-
-        Args:
-            provider: LLM provider for generating responses
-            web_search: Whether to enable built-in web search on every LLM call
-        """
         super().__init__(
             provider=provider,
             name="Defender",
@@ -49,17 +29,7 @@ class DefenderAgent(BaseAgent):
         )
 
     async def analyze(self, context: dict) -> AgentResponse:
-        """
-        Review a vulnerability claim and provide a defense.
-
-        Args:
-            context: Dictionary containing:
-                - contract_code: The smart contract source code
-                - claim: The VulnerabilityClaim to review
-
-        Returns:
-            AgentResponse containing the defense argument
-        """
+        """Review a vulnerability claim and provide a defense."""
         contract_code = context.get("contract_code", "")
         claim = context.get("claim")
 
@@ -77,10 +47,9 @@ class DefenderAgent(BaseAgent):
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_debate)
 
-        # Extract structured defense data
         defense_verdict = parsed.get("verdict", "unknown")
         confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.MEDIUM)
-        defense_text = parsed.get("defense", str(parsed))
+        defense_text = parsed.get("defense", parsed.get("raw_content", str(parsed)))
 
         return AgentResponse(
             agent_role=self.role,
@@ -98,18 +67,7 @@ class DefenderAgent(BaseAgent):
         )
 
     async def respond_to_rebuttal(self, context: dict) -> AgentResponse:
-        """
-        Respond to the Attacker's rebuttal.
-
-        Args:
-            context: Dictionary containing:
-                - original_claim: The original vulnerability claim
-                - original_defense: The Defender's initial argument
-                - rebuttal: The Attacker's counter-argument
-
-        Returns:
-            AgentResponse with updated defense or concession
-        """
+        """Respond to the Attacker's rebuttal with an updated defense or concession."""
         claim = context.get("original_claim", {})
         original_defense = context.get("original_defense", "")
         rebuttal = context.get("rebuttal", "")
@@ -124,14 +82,13 @@ class DefenderAgent(BaseAgent):
 
         parsed = await self._send_message_json(prompt, include_history=True, temperature=settings.temp_debate)
 
-        # Determine verdict from structured output
         verdict = parsed.get("verdict", "MAINTAIN_DEFENSE").upper()
         acknowledges_vuln = "ACKNOWLEDGE" in verdict
         confidence = self._parse_confidence_level(parsed.get("confidence"), default=ConfidenceLevel.MEDIUM)
 
         return AgentResponse(
             agent_role=self.role,
-            content=parsed.get("reasoning", str(parsed)),
+            content=parsed.get("reasoning", parsed.get("raw_content", str(parsed))),
             claims=[],
             reasoning="Acknowledges vulnerability" if acknowledges_vuln else "Maintains defense",
             confidence=confidence,
@@ -143,17 +100,7 @@ class DefenderAgent(BaseAgent):
         )
 
     async def respond_to_clarification(self, context: dict) -> AgentResponse:
-        """
-        Respond to a clarification request from the Judge.
-
-        Args:
-            context: Dictionary containing:
-                - original_claim: The original vulnerability claim
-                - judge_question: The Judge's specific question
-
-        Returns:
-            AgentResponse with targeted answer to the Judge's question
-        """
+        """Respond to the Judge's clarification question."""
         claim = context.get("original_claim", {})
         judge_question = context.get("judge_question", "")
 
@@ -170,7 +117,7 @@ class DefenderAgent(BaseAgent):
 
         return AgentResponse(
             agent_role=self.role,
-            content=parsed.get("answer", str(parsed)),
+            content=parsed.get("answer", parsed.get("raw_content", str(parsed))),
             claims=[],
             reasoning="Clarification response",
             confidence=confidence,

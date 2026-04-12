@@ -1,8 +1,4 @@
-"""
-Configuration management for the Adversarial Agent System.
-
-Handles environment variables, default settings, and configuration validation.
-"""
+"""Configuration management for the Adversarial Agent System."""
 
 import logging
 from datetime import datetime
@@ -22,19 +18,7 @@ except (PermissionError, FileNotFoundError):
 
 
 def setup_logging(log_level: str = "INFO") -> Optional[Path]:
-    """
-    Configure logging for the application.
-
-    When log_level is DEBUG, the full transcript is also written to a
-    timestamped file under data/logs/ so the complete pipeline output
-    can be reviewed after the run.
-
-    Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-
-    Returns:
-        Path to the debug log file, or None when not in DEBUG mode.
-    """
+    """Configure logging; returns a debug log file path when level is DEBUG."""
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     fmt = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -77,14 +61,7 @@ _CONFIDENCE_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
 
 class ConfidenceLevel(str, Enum):
-    """Categorical confidence level used across agents and the judge.
-
-    Replaces float confidence scores (0.0–1.0) with an honest three-tier
-    signal that reflects what the model is actually communicating:
-    - HIGH:   clear evidence, concrete exploit path, minimal ambiguity
-    - MEDIUM: plausible but depends on context or has some uncertainty
-    - LOW:    suspicious pattern, indirect path, or genuinely ambiguous
-    """
+    """Three-tier confidence signal: HIGH (clear evidence), MEDIUM (plausible), LOW (ambiguous)."""
 
     LOW = "LOW"
     MEDIUM = "MEDIUM"
@@ -173,31 +150,31 @@ class Settings(BaseSettings):
         return upper_v
 
     def get_model_for_provider(self, provider: Optional[LLMProvider] = None) -> str:
-        """Get the default model for a given provider."""
+        """Return the configured default model for the given provider."""
         provider = provider or self.default_provider
-        if provider == LLMProvider.OPENAI:
-            return self.default_model_openai
-        elif provider == LLMProvider.ANTHROPIC:
-            return self.default_model_anthropic
-        elif provider == LLMProvider.GEMINI:
-            return self.default_model_gemini
-        else:
+        models = {
+            LLMProvider.OPENAI: self.default_model_openai,
+            LLMProvider.ANTHROPIC: self.default_model_anthropic,
+            LLMProvider.GEMINI: self.default_model_gemini,
+        }
+        if provider not in models:
             raise ValueError(f"Unknown provider: {provider}")
+        return models[provider]
 
     def get_api_key_for_provider(self, provider: Optional[LLMProvider] = None) -> Optional[str]:
-        """Get the API key for a given provider."""
+        """Return the API key for the given provider."""
         provider = provider or self.default_provider
-        if provider == LLMProvider.OPENAI:
-            return self.openai_api_key
-        elif provider == LLMProvider.ANTHROPIC:
-            return self.anthropic_api_key
-        elif provider == LLMProvider.GEMINI:
-            return self.gemini_api_key
-        else:
+        keys = {
+            LLMProvider.OPENAI: self.openai_api_key,
+            LLMProvider.ANTHROPIC: self.anthropic_api_key,
+            LLMProvider.GEMINI: self.gemini_api_key,
+        }
+        if provider not in keys:
             raise ValueError(f"Unknown provider: {provider}")
+        return keys[provider]
 
     def validate_provider_config(self, provider: Optional[LLMProvider] = None) -> None:
-        """Validate that the provider has required configuration."""
+        """Raise ValueError if the provider's API key is not configured."""
         provider = provider or self.default_provider
         api_key = self.get_api_key_for_provider(provider)
         if not api_key:

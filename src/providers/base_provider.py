@@ -1,9 +1,4 @@
-"""
-Abstract base class for LLM providers.
-
-Defines the interface that all LLM providers must implement,
-ensuring consistent behavior across different providers.
-"""
+"""Abstract base class defining the interface for all LLM providers."""
 
 import asyncio
 import logging
@@ -29,7 +24,6 @@ class LLMResponse:
 
     @property
     def total_tokens(self) -> int:
-        """Total tokens used in the request."""
         return self.prompt_tokens + self.completion_tokens
 
 
@@ -41,17 +35,11 @@ class Message:
     content: str
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format for API calls."""
         return {"role": self.role, "content": self.content}
 
 
 class BaseLLMProvider(ABC):
-    """
-    Abstract base class for LLM providers.
-
-    All LLM provider implementations must inherit from this class
-    and implement the required abstract methods.
-    """
+    """Base class for LLM providers; subclasses must implement complete()."""
 
     def __init__(
         self,
@@ -77,25 +65,7 @@ class BaseLLMProvider(ABC):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """
-        Send messages to the LLM and get a response.
-
-        Args:
-            messages: List of messages in the conversation.
-            temperature: Optional override for sampling temperature.
-            web_search: When True, enable the provider's built-in web search.
-                        Anthropic uses web_search_20260209; Gemini uses Google
-                        Search grounding. Both are executed server-side with no
-                        client-side round-trips required.
-            json_mode: When True, instruct the provider to return valid JSON.
-                       For Gemini this sets response_mime_type="application/json"
-                       (enforced at the API level, not via prompt). Ignored when
-                       web_search=True because search grounding is incompatible
-                       with structured output on Gemini.
-
-        Returns:
-            LLMResponse containing the model's response.
-        """
+        """Send messages to the LLM and return a response."""
         pass
 
     async def complete_simple(

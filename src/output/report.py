@@ -1,9 +1,4 @@
-"""
-Report generation for vulnerability analysis results.
-
-Generates formatted reports in multiple formats (console, JSON, Markdown)
-from the debate analysis results.
-"""
+"""Report generation from vulnerability analysis results (console, JSON, Markdown)."""
 
 import json
 from dataclasses import dataclass, field
@@ -33,7 +28,6 @@ class Finding:
     judge_reasoning: str = ""
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format."""
         return {
             "vulnerability_type": self.vulnerability_type,
             "severity": self.severity,
@@ -64,26 +58,21 @@ class Report:
 
     @property
     def critical_count(self) -> int:
-        """Number of critical findings."""
         return sum(1 for f in self.confirmed_findings if f.severity == "critical")
 
     @property
     def high_count(self) -> int:
-        """Number of high severity findings."""
         return sum(1 for f in self.confirmed_findings if f.severity == "high")
 
     @property
     def medium_count(self) -> int:
-        """Number of medium severity findings."""
         return sum(1 for f in self.confirmed_findings if f.severity == "medium")
 
     @property
     def low_count(self) -> int:
-        """Number of low severity findings."""
         return sum(1 for f in self.confirmed_findings if f.severity == "low")
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format."""
         return {
             "contract_path": self.contract_path,
             "contract_language": self.contract_language,
@@ -131,16 +120,7 @@ class ReportGenerator:
     }
 
     def generate(self, result: dict, contract_path: str) -> Report:
-        """
-        Generate a report from analysis results.
-
-        Args:
-            result: The raw analysis result dictionary
-            contract_path: Path to the analyzed contract
-
-        Returns:
-            A Report object
-        """
+        """Build a Report from a raw analysis result dict."""
         findings = []
 
         for claim_result in result.get("claim_results", []):
@@ -174,16 +154,9 @@ class ReportGenerator:
         )
 
     def print_to_console(self, report: Report, console: Optional[Console] = None) -> None:
-        """
-        Print the report to the console with rich formatting.
-
-        Args:
-            report: The report to print
-            console: Rich console instance (optional)
-        """
+        """Print the report to the console with rich formatting."""
         console = console or Console()
 
-        # Summary panel
         summary_text = (
             f"Contract: {report.contract_path}\n"
             f"Language: {report.contract_language}\n"
@@ -194,24 +167,22 @@ class ReportGenerator:
         )
         console.print(Panel(summary_text, title="Analysis Summary", style="bold blue"))
 
-        # Severity breakdown
         if report.confirmed_findings:
             breakdown = Table(show_header=True, header_style="bold")
             breakdown.add_column("Severity", style="cyan")
             breakdown.add_column("Count", justify="right")
 
-            if report.critical_count > 0:
-                breakdown.add_row("Critical", str(report.critical_count), style="red bold")
-            if report.high_count > 0:
-                breakdown.add_row("High", str(report.high_count), style="red")
-            if report.medium_count > 0:
-                breakdown.add_row("Medium", str(report.medium_count), style="yellow")
-            if report.low_count > 0:
-                breakdown.add_row("Low", str(report.low_count), style="cyan")
+            for label, style, count in [
+                ("Critical", "red bold", report.critical_count),
+                ("High", "red", report.high_count),
+                ("Medium", "yellow", report.medium_count),
+                ("Low", "cyan", report.low_count),
+            ]:
+                if count > 0:
+                    breakdown.add_row(label, str(count), style=style)
 
             console.print(breakdown)
 
-        # Findings table
         if report.confirmed_findings:
             console.print("\n[bold]Confirmed Vulnerabilities:[/bold]\n")
 
@@ -241,31 +212,18 @@ class ReportGenerator:
         else:
             console.print("\n[green]No confirmed vulnerabilities found.[/green]\n")
 
-        # Analysis info
         console.print(
             f"\n[dim]Analysis performed with {report.provider}/{report.model}[/dim]"
         )
 
     def save_json(self, report: Report, output_path: Path) -> None:
-        """
-        Save the report as JSON.
-
-        Args:
-            report: The report to save
-            output_path: Path to save the JSON file
-        """
+        """Save the report as JSON."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(report.to_dict(), f, indent=2, default=str)
 
     def save_markdown(self, report: Report, output_path: Path) -> None:
-        """
-        Save the report as Markdown.
-
-        Args:
-            report: The report to save
-            output_path: Path to save the Markdown file
-        """
+        """Save the report as Markdown."""
         md_lines = [
             f"# Security Analysis Report",
             f"",
