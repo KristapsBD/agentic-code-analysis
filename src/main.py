@@ -1,9 +1,4 @@
-"""
-CLI entry point for the Adversarial Agent System.
-
-Provides commands for analyzing smart contracts, running evaluations,
-and comparing results across different LLM providers.
-"""
+"""CLI entry point for the Adversarial Agent System."""
 
 import asyncio
 import logging
@@ -208,76 +203,6 @@ async def _run_analysis(
 
 
 @app.command()
-def evaluate(
-    benchmark_dir: Path = typer.Argument(
-        ...,
-        help="Path to the benchmark directory containing smart contracts",
-        exists=True,
-        dir_okay=True,
-        file_okay=False,
-    ),
-    provider: LLMProvider = typer.Option(
-        settings.default_provider,
-        "--provider",
-        "-p",
-        help="LLM provider to use",
-    ),
-    ground_truth: Optional[Path] = typer.Option(
-        None,
-        "--ground-truth",
-        "-g",
-        help="JSON file with labeled ground truth vulnerabilities",
-    ),
-    output: Path = typer.Option(
-        Path("data/results/evaluation.json"),
-        "--output",
-        "-o",
-        help="Output file path for evaluation results",
-    ),
-    rounds: int = typer.Option(
-        settings.default_debate_rounds,
-        "--rounds",
-        "-r",
-        help="Number of debate rounds per contract",
-        min=1,
-        max=5,
-    ),
-) -> None:
-    """
-    Evaluate the system against a benchmark dataset.
-
-    Runs analysis on all contracts in the benchmark directory and
-    calculates precision, recall, and F1 scores.
-    """
-    print_banner()
-
-    try:
-        settings.validate_provider_config(provider)
-    except ValueError as e:
-        console.print(f"[red]Configuration Error:[/red] {e}")
-        raise typer.Exit(code=1)
-
-    console.print(f"[cyan]Benchmark Directory:[/cyan] {benchmark_dir}")
-    console.print(f"[cyan]Provider:[/cyan] {provider.value}")
-    if ground_truth:
-        console.print(f"[cyan]Ground Truth:[/cyan] {ground_truth}")
-    console.print()
-
-    # Run evaluation
-    with console.status("[bold green]Running evaluation..."):
-        evaluator = Evaluator(provider=provider, max_rounds=rounds)
-        results = asyncio.run(evaluator.evaluate_benchmark(benchmark_dir, ground_truth))
-
-    # Display results
-    evaluator.print_results(results, console)
-
-    # Save results
-    output.parent.mkdir(parents=True, exist_ok=True)
-    evaluator.save_results(results, output)
-    console.print(f"\n[green]Results saved to:[/green] {output}")
-
-
-@app.command()
 def benchmark(
     benchmark_dir: Path = typer.Argument(
         ...,
@@ -391,95 +316,6 @@ def benchmark(
     output_path.write_text(_json.dumps(combined, indent=2, default=str))
     console.print(f"\n[green]Results saved to:[/green] {output_path}")
     console.print(f"[green]Transcripts saved to:[/green] {trace_dir}/")
-
-
-@app.command()
-def compare(
-    contract_path: Path = typer.Argument(
-        ...,
-        help="Path to the smart contract file to analyze",
-        exists=True,
-        readable=True,
-    ),
-    rounds: int = typer.Option(
-        settings.default_debate_rounds,
-        "--rounds",
-        "-r",
-        help="Number of debate rounds",
-        min=1,
-        max=5,
-    ),
-    output: Optional[Path] = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output file path for comparison results",
-    ),
-) -> None:
-    """
-    Compare vulnerability detection results across different LLM providers.
-
-    Runs the same analysis using OpenAI, Anthropic, and Gemini, then
-    presents a side-by-side comparison of the findings.
-    """
-    print_banner()
-
-    # Validate all providers
-    providers_to_test = []
-    for provider in [LLMProvider.OPENAI, LLMProvider.ANTHROPIC, LLMProvider.GEMINI]:
-        try:
-            settings.validate_provider_config(provider)
-            providers_to_test.append(provider)
-        except ValueError:
-            console.print(f"[yellow]Warning:[/yellow] {provider.value} not configured, skipping")
-
-    if len(providers_to_test) < 2:
-        console.print("[red]Error:[/red] Need at least 2 providers configured for comparison")
-        raise typer.Exit(code=1)
-
-    console.print(f"[cyan]Analyzing:[/cyan] {contract_path}")
-    console.print(f"[cyan]Providers:[/cyan] {', '.join(p.value for p in providers_to_test)}")
-    console.print()
-
-    contract_code = contract_path.read_text()
-    results = {}
-
-    for provider in providers_to_test:
-        with console.status(f"[bold green]Analyzing with {provider.value}..."):
-            result = asyncio.run(
-                _run_analysis(contract_code, str(contract_path), provider, rounds, False, None)
-            )
-            results[provider.value] = result
-
-    # Display comparison
-    _display_comparison(results, console)
-
-    if output:
-        import json
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(results, indent=2, default=str))
-        console.print(f"\n[green]Comparison saved to:[/green] {output}")
-
-
-def _display_comparison(results: dict, console: Console) -> None:
-    """Display a comparison table of results from different providers."""
-    table = Table(title="Provider Comparison", show_header=True, header_style="bold magenta")
-    table.add_column("Metric", style="cyan")
-
-    for provider in results.keys():
-        table.add_column(provider.title(), justify="center")
-
-    # Add rows for key metrics
-    metrics = ["total_vulnerabilities", "confirmed_vulnerabilities", "debate_rounds"]
-    for metric in metrics:
-        row = [metric.replace("_", " ").title()]
-        for provider in results.keys():
-            value = results[provider].get(metric, "N/A")
-            row.append(str(value))
-        table.add_row(*row)
-
-    console.print()
-    console.print(table)
 
 
 @app.command()

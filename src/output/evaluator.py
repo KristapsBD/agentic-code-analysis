@@ -359,84 +359,6 @@ class Evaluator:
         self.provider = provider or settings.default_provider
         self.max_rounds = max_rounds
 
-    async def evaluate_benchmark(
-        self,
-        benchmark_dir: Path,
-        ground_truth_file: Optional[Path] = None,
-    ) -> BenchmarkResult:
-        """
-        Evaluate the system against a benchmark dataset.
-
-        Args:
-            benchmark_dir: Directory containing benchmark contracts
-            ground_truth_file: Optional JSON file with ground truth
-
-        Returns:
-            BenchmarkResult with evaluation metrics
-        """
-        result = BenchmarkResult(
-            benchmark_name=benchmark_dir.name,
-            started_at=datetime.now(),
-            provider=self.provider.value,
-            model=settings.get_model_for_provider(self.provider),
-        )
-
-        # Load ground truth
-        ground_truths = self._load_ground_truth(benchmark_dir, ground_truth_file)
-
-        # Find all contract files
-        contract_files = self._find_contract_files(benchmark_dir)
-        result.total_contracts = len(contract_files)
-
-        # Create debate manager
-        llm_provider = ProviderFactory.create(self.provider)
-        debate_manager = DebateManager(
-            provider=llm_provider,
-            max_rounds=self.max_rounds,
-            judge_clarification_trigger=settings.judge_clarification_trigger,
-            verbose=False,
-        )
-
-        # Evaluate each contract
-        for contract_path in contract_files:
-            try:
-                contract_code = contract_path.read_text()
-                ground_truth = (
-                    ground_truths.get(str(contract_path))
-                    or ground_truths.get(contract_path.name)
-                    or GroundTruth(str(contract_path), [])
-                )
-
-                start_time = datetime.now()
-                analysis_result = await debate_manager.run_debate(
-                    contract_code, str(contract_path)
-                )
-                analysis_time = (datetime.now() - start_time).total_seconds()
-
-                # Compare results
-                eval_result = self._compare_results(
-                    ground_truth=ground_truth,
-                    analysis_result=analysis_result,
-                    analysis_time=analysis_time,
-                )
-                result.contract_results.append(eval_result)
-                result.successful_analyses += 1
-
-                # Reset agents between contracts
-                debate_manager.reset_agents()
-
-            except Exception as e:
-                result.contract_results.append(EvaluationResult(
-                    contract_path=str(contract_path),
-                    ground_truth=GroundTruth(str(contract_path), []),
-                    predicted_vulnerabilities=[],
-                    error=str(e),
-                ))
-                result.failed_analyses += 1
-
-        result.completed_at = datetime.now()
-        return result
-
     def _load_ground_truth(
         self,
         benchmark_dir: Path,
@@ -871,8 +793,3 @@ class Evaluator:
 
         console.print(summary)
 
-    def save_results(self, result: BenchmarkResult, output_path: Path) -> None:
-        """Save evaluation results to JSON file."""
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w") as f:
-            json.dump(result.to_dict(), f, indent=2, default=str)
