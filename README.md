@@ -1,6 +1,6 @@
 # Agent Debate System for Smart Contract Vulnerability Detection
 
-A multi agent LLM system that uses agent debate to detect vulnerabilities in blockchain smart contracts. Three specialised agents (Attacker, Defender, Judge) argue from opposing perspectives before a final verdict is rendered, mimicking a real security audit.
+A multi agent LLM system that uses agent debate to detect vulnerabilities in blockchain smart contracts. Three agents (Attacker, Defender, Judge) argue from opposing perspectives before a final verdict is rendered, simulating a security audit.
 
 ## Installation
 
@@ -34,7 +34,7 @@ python -m src.main analyze <CONTRACT_PATH> [OPTIONS]
 | `--rounds` | `-r` | `2` | Debate rounds per claim (1–5) |
 | `--output` | `-o` | auto | Output path for JSON + Markdown report |
 | `--verbose` | `-v` | off | Print agent dialogue to console |
-| `--web-search` | `-w` | on | Enable built-in web search grounding (Anthropic: `web_search_20260209`; Gemini: Google Search grounding). Use `--no-web-search` to disable. |
+| `--web-search` | `-w` | on | Enable built-in web search grounding. Use `--no-web-search` to disable. |
 
 ```bash
 # Quick scan with Gemini
@@ -45,7 +45,7 @@ python -m src.main analyze data/benchmarks/medium/Reentrancy.sol
 
 ### `benchmark` — compare architectures
 
-Runs the full 3-agent debate once per contract, then derives all three architecture results from the same LLM run (no extra API calls), and prints a side by side precision/recall/F1 comparison.
+Runs full 3 agent debate once per contract, then calculates all three architecture results from the same LLM run, and prints a side by side precision/recall/F1 comparison.
 
 ```bash
 python -m src.main benchmark <BENCHMARK_DIR> [OPTIONS]
@@ -53,11 +53,11 @@ python -m src.main benchmark <BENCHMARK_DIR> [OPTIONS]
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
-| `--ground-truth` | `-g` | — | JSON file with labelled ground truth (strongly recommended) |
+| `--ground-truth` | `-g` | — | JSON file with labelled ground truth |
 | `--provider` | `-p` | `gemini` | LLM provider |
 | `--rounds` | `-r` | `2` | Debate rounds per claim |
 | `--output` | `-o` | auto | Combined JSON output path |
-| `--delay` | `-d` | `5.0` | Seconds to wait between contracts (avoids API rate limiting) |
+| `--delay` | `-d` | `5.0` | Seconds to wait between contracts |
 
 ```bash
 python -m src.main benchmark data/benchmarks/medium \
@@ -106,7 +106,7 @@ agentic-analysis/
 ├── data/
 │   ├── benchmarks/       # Smart contracts and ground truth labels
 │   │   └── ground_truth/ # JSON ground truth files
-│   ├── logs/             # Debug transcripts (created when LOG_LEVEL=DEBUG)
+│   ├── logs/             # Debug transcripts
 │   └── results/          # Analysis and evaluation output
 └── tests/
 ```
