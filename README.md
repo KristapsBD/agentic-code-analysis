@@ -14,6 +14,16 @@ source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -e .
 ```
 
+### Optional: Slither static analysis
+
+To enable pre-debate static analysis with [Slither](https://github.com/crytic/slither):
+
+```bash
+pip install -e ".[static-analysis]"
+```
+
+This also installs `solc-select`, which the system uses to automatically download and switch to the correct Solidity compiler version required by each contract. No manual `solc` management is needed.
+
 ## Configuration
 
 ```bash
@@ -35,10 +45,14 @@ python -m src.main analyze <CONTRACT_PATH> [OPTIONS]
 | `--output` | `-o` | auto | Output path for JSON + Markdown report |
 | `--verbose` | `-v` | off | Print agent dialogue to console |
 | `--web-search` | `-w` | on | Enable built-in web search grounding. Use `--no-web-search` to disable. |
+| `--static-analysis` | `-s` | off | Run Slither before the debate and inject findings into the Attacker's scan prompt. |
 
 ```bash
 # Quick scan with Gemini
 python -m src.main analyze data/benchmarks/medium/Reentrancy.sol
+
+# With Slither pre-scan (requires slither-analyzer installed)
+python -m src.main analyze contracts/MyContract.sol --static-analysis --verbose
 ```
 
 ---
@@ -101,6 +115,7 @@ agentic-analysis/
 │   ├── orchestration/    # Debate manager and conversation tracking
 │   ├── knowledge/        # Prompt templates and vulnerability type definitions
 │   ├── output/           # Report generation and benchmark evaluation
+│   ├── tools/            # External tool integrations (Slither static analysis)
 │   ├── config.py         # Settings, environment loading
 │   └── main.py           # CLI entry point
 ├── data/
