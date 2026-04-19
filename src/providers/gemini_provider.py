@@ -39,20 +39,25 @@ class GeminiProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """Send messages to Gemini; json_mode is disabled when web_search=True (incompatible)."""
+        """Send messages to Gemini.
+
+        When json_mode=True, web_search is automatically disabled
+        """
         self._validate_messages(messages)
 
         system_instruction, contents = self._build_contents(messages)
+
+        # Disable web search, code analysis doesn't benefit from it anyway.
+        effective_web_search = web_search and not json_mode
 
         config_kwargs: dict[str, Any] = {
             "temperature": temperature if temperature is not None else self.temperature,
         }
         if system_instruction:
             config_kwargs["system_instruction"] = system_instruction
-        if web_search:
+        if effective_web_search:
             config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
         elif json_mode:
-            # response_mime_type is incompatible with search grounding tools
             config_kwargs["response_mime_type"] = "application/json"
 
         config = types.GenerateContentConfig(**config_kwargs)
@@ -60,7 +65,7 @@ class GeminiProvider(BaseLLMProvider):
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"[Gemini] → Request: model={self.model}, "
-                f"content_turns={len(contents)}, web_search={web_search}, "
+                f"content_turns={len(contents)}, web_search={effective_web_search}, "
                 f"json_mode={json_mode}, "
                 f"temperature={config_kwargs.get('temperature')}, "
                 f"response_mime_type={config_kwargs.get('response_mime_type', 'text/plain')}"
@@ -70,7 +75,7 @@ class GeminiProvider(BaseLLMProvider):
 
         content = self._extract_text(response)
 
-        if web_search:
+        if effective_web_search:
             grounding = None
             if response.candidates:
                 grounding = getattr(response.candidates[0], "grounding_metadata", None)

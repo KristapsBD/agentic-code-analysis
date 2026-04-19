@@ -86,6 +86,17 @@ def analyze(
             "No effect on OpenAI. Increases latency and cost. Enabled by default."
         ),
     ),
+    static_analysis: bool = typer.Option(
+        False,
+        "--static-analysis/--no-static-analysis",
+        "-s",
+        help=(
+            "Run Slither static analysis on the contract before the debate begins. "
+            "Findings are injected into the Attacker's scan prompt as grounding context. "
+            "Only applies to Solidity (.sol) files. Requires: pip install slither-analyzer. "
+            "Disabled by default."
+        ),
+    ),
 ) -> None:
     """
     Analyze a smart contract for vulnerabilities using adversarial debate.
@@ -109,6 +120,7 @@ def analyze(
     console.print(f"[cyan]Provider:[/cyan] {provider.value}")
     console.print(f"[cyan]Debate Rounds:[/cyan] {rounds}")
     console.print(f"[cyan]Web Search:[/cyan] {'enabled' if web_search else 'disabled'}")
+    console.print(f"[cyan]Static Analysis:[/cyan] {'enabled (Slither)' if static_analysis else 'disabled'}")
     if _debug_log_file:
         console.print(f"[cyan]Debug log:[/cyan] {_debug_log_file}")
     console.print()
@@ -119,7 +131,7 @@ def analyze(
     # Run the analysis
     with console.status("[bold green]Running adversarial analysis...") as status:
         result = asyncio.run(
-            _run_analysis(contract_code, str(contract_path), provider, rounds, verbose, status, web_search)
+            _run_analysis(contract_code, str(contract_path), provider, rounds, verbose, status, web_search, static_analysis)
         )
 
     # Generate and display report
@@ -173,6 +185,7 @@ async def _run_analysis(
     verbose: bool,
     status: "rich.status.Status",
     web_search: bool = False,
+    static_analysis: bool = False,
 ) -> dict:
     """Run the adversarial analysis asynchronously."""
     logger.debug(f"Creating LLM provider: {provider.value}")
@@ -181,13 +194,17 @@ async def _run_analysis(
     logger.debug(f"Provider created: {llm_provider.provider_name}")
 
     # Create debate manager
-    logger.debug(f"Initializing DebateManager with {rounds} rounds, web_search={web_search}")
+    logger.debug(
+        f"Initializing DebateManager with {rounds} rounds, "
+        f"web_search={web_search}, static_analysis={static_analysis}"
+    )
     debate_manager = DebateManager(
         provider=llm_provider,
         max_rounds=rounds,
         judge_clarification_trigger=settings.judge_clarification_trigger,
         verbose=verbose,
         web_search=web_search,
+        static_analysis=static_analysis,
     )
 
     # Run debate

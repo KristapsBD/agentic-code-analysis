@@ -44,7 +44,7 @@ REPORTING RULES:
 - Gated types: only report if the contract explicitly uses the named pattern (on-chain randomness source, ecrecover/EIP-712, proxy pattern, block.timestamp-dependent outcome).
 - Minimum confidence: MEDIUM. A pattern without a clear attacker action is not a finding."""
 
-SCAN_PROMPT_TEMPLATE = """Analyze the following smart contract for security vulnerabilities.
+SCAN_PROMPT_TEMPLATE = """{static_analysis_section}Analyze the following smart contract for security vulnerabilities.
 
 ```
 {contract_code}

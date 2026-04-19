@@ -5,7 +5,8 @@ Tests for agent implementations.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.agents.base_agent import AgentRole, VulnerabilityClaim, AgentResponse
+import json
+from src.agents.base_agent import AgentRole, VulnerabilityClaim, AgentResponse, BaseAgent
 from src.config import ConfidenceLevel
 from src.agents.attacker_agent import AttackerAgent
 from src.agents.defender_agent import DefenderAgent
@@ -130,6 +131,44 @@ class TestJudgeAgent:
         response = "VERDICT: NOT_VULNERABLE\n\nSEVERITY: none\n\nREASONING: SafeMath used.\n\nCONFIDENCE: HIGH"
         verdict = judge._fallback_parse_verdict(response, "test-claim")
         assert verdict.is_valid is False
+
+
+class TestParseJsonResponse:
+
+    def test_markdown_extraction(self):
+        result = BaseAgent._parse_json_response('```json\n{"key": "value"}\n```')
+        assert result == {"key": "value"}
+
+    def test_brace_extraction(self):
+        result = BaseAgent._parse_json_response('some text {"key": "value"} trailing')
+        assert result == {"key": "value"}
+
+    def test_repair_truncated_mid_string(self):
+        truncated = (
+            '{\n'
+            '  "vulnerabilities": [\n'
+            '    {\n'
+            '      "id": "vuln-1",\n'
+            '      "type": "denial_of_service",\n'
+            '      "severity": "high",\n'
+            '      "evidence": "Lines 39-40 assign `new address[](0)` and `new uint'
+        )
+        result = BaseAgent._parse_json_response(truncated)
+        assert "_parse_failed" not in result
+        assert result["vulnerabilities"][0]["id"] == "vuln-1"
+        assert "evidence" in result["vulnerabilities"][0]
+
+    def test_fallback_on_unrecoverable(self):
+        result = BaseAgent._parse_json_response("not json at all")
+        assert result.get("_parse_failed") is True
+
+    def test_repair_helper_mid_string(self):
+        repaired = BaseAgent._repair_truncated_json('{"evidence": "foo `bar')
+        assert json.loads(repaired) == {"evidence": "foo `bar"}
+
+    def test_repair_helper_escaped_quote(self):
+        repaired = BaseAgent._repair_truncated_json('{"key": "he said \\"hello')
+        assert json.loads(repaired)["key"].startswith('he said "hello')
 
 
 class TestVerdict:

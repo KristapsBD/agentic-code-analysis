@@ -35,9 +35,20 @@ class AttackerAgent(BaseAgent):
         """Scan the contract for vulnerabilities."""
         contract_code = context.get("contract_code", "")
 
+        static_analysis_context = context.get("static_analysis_context", "")
+        if static_analysis_context:
+            static_analysis_section = (
+                f"STATIC ANALYSIS PRE-SCAN (Slither):\n{static_analysis_context}\n\n"
+                "Use these findings as starting hypotheses — verify each against the actual code "
+                "before reporting. You may also identify issues that static analysis missed.\n\n"
+            )
+        else:
+            static_analysis_section = ""
+
         prompt = SCAN_PROMPT_TEMPLATE.format(
             contract_code=contract_code,
             vulnerability_types=", ".join(VULNERABILITY_TYPES),
+            static_analysis_section=static_analysis_section,
         )
 
         parsed = await self._send_message_json(prompt, include_history=False, temperature=settings.temp_attacker_scan)

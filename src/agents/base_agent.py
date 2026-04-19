@@ -90,6 +90,7 @@ class BaseAgent(ABC):
         self.system_prompt = system_prompt
         self.web_search = web_search
         self.conversation_history: list[Message] = []
+        self._last_llm_response: Any = None  # holds the most recent LLMResponse for diagnostics
 
     @abstractmethod
     async def analyze(self, context: dict) -> AgentResponse:
@@ -120,6 +121,7 @@ class BaseAgent(ABC):
         response = await self.provider.complete(
             messages, temperature=temperature, web_search=self.web_search, json_mode=json_mode
         )
+        self._last_llm_response = response
 
         if logger.isEnabledFor(logging.DEBUG):
             _SEP = "─" * 60
@@ -130,6 +132,14 @@ class BaseAgent(ABC):
                 f"{response.prompt_tokens} prompt / {response.completion_tokens} completion | "
                 f"finish_reason={response.finish_reason!r}):\n"
                 f"{_SEP}\n{response.content}\n{_SEP}"
+            )
+
+        if response.finish_reason not in ("stop", "end_turn", "1", "stop_sequence"):
+            logger.warning(
+                f"[{self.name}] LLM response ended with finish_reason={response.finish_reason!r} "
+                f"— output may be truncated. Response length: {len(response.content)} chars, "
+                f"completion tokens: {response.completion_tokens}. "
+                f"If JSON parsing fails after this, increase max_output_tokens."
             )
 
         self.conversation_history.append(Message(role="user", content=user_message))
@@ -145,9 +155,10 @@ class BaseAgent(ABC):
     ) -> dict[str, Any]:
         """Send a message and return the response parsed as JSON."""
         json_instruction = (
-            "\n\nIMPORTANT: You MUST respond with valid JSON only. "
-            "Do not include any text outside the JSON object. "
-            "Do not wrap the JSON in markdown code blocks."
+            "\n\nIMPORTANT: Your entire response MUST be a single, complete, valid JSON object. "
+            "Start your response with '{' and end it with '}'. "
+            "Do not include any text, explanation, or markdown outside the JSON. "
+            "Do not truncate or abbreviate the JSON — emit all fields fully before closing the object."
         )
         raw_response = await self._send_message(
             user_message + json_instruction,
@@ -160,9 +171,15 @@ class BaseAgent(ABC):
         parsed = self._parse_json_response(raw_response)
 
         if parsed.get("_parse_failed"):
+            r = self._last_llm_response
+            token_info = (
+                f"tokens: {r.tokens_used} total / {r.prompt_tokens} prompt / "
+                f"{r.completion_tokens} completion | finish_reason={r.finish_reason!r}"
+                if r else "token info unavailable"
+            )
             logger.warning(
-                f"[{self.name}] JSON parsing FAILED — raw_content fallback used. "
-                f"First 300 chars of response: {raw_response[:300]!r}"
+                f"[{self.name}] JSON parsing FAILED ({token_info}). "
+                f"First 100 chars of raw response: {raw_response[:100]!r}"
             )
         else:
             logger.debug(
@@ -173,8 +190,41 @@ class BaseAgent(ABC):
         return parsed
 
     @staticmethod
+    def _repair_truncated_json(text: str) -> str:
+        """Append the minimum suffix to close unclosed strings/arrays/objects."""
+        in_string = False
+        escape_next = False
+        stack: list[str] = []  # '{' or '[' for each open container
+
+        for char in text:
+            if escape_next:
+                escape_next = False
+                continue
+            if char == "\\" and in_string:
+                escape_next = True
+                continue
+            if char == '"':
+                in_string = not in_string
+                continue
+            if not in_string:
+                if char in ("{", "["):
+                    stack.append(char)
+                elif char == "}" and stack and stack[-1] == "{":
+                    stack.pop()
+                elif char == "]" and stack and stack[-1] == "[":
+                    stack.pop()
+
+        suffix = ""
+        if in_string:
+            suffix += '"'  # close the open string value
+        for opener in reversed(stack):
+            suffix += "}" if opener == "{" else "]"
+
+        return text + suffix
+
+    @staticmethod
     def _parse_json_response(response: str) -> dict[str, Any]:
-        """Parse a JSON response, trying direct parse → markdown extraction → brace extraction."""
+        """Parse a JSON response: direct → markdown extraction → brace extraction → truncation repair."""
         try:
             result = json.loads(response.strip())
             logger.debug("JSON parse strategy: direct parse succeeded")
@@ -198,6 +248,17 @@ class BaseAgent(ABC):
             try:
                 result = json.loads(response[brace_start:brace_end + 1])
                 logger.debug("JSON parse strategy: brace-extraction succeeded")
+                return result
+            except json.JSONDecodeError:
+                pass
+
+        # Strategy 4: close any unclosed strings/containers and retry.
+        if brace_start != -1:
+            candidate = response[brace_start:]
+            repaired = BaseAgent._repair_truncated_json(candidate)
+            try:
+                result = json.loads(repaired)
+                logger.debug("JSON parse strategy: truncation-repair succeeded (string values may be truncated)")
                 return result
             except json.JSONDecodeError:
                 pass

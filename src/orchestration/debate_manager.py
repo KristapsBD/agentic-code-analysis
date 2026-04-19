@@ -31,6 +31,7 @@ from src.agents.judge_agent import JudgeAgent, Verdict
 from src.config import ConfidenceLevel
 from src.orchestration.conversation import Conversation, TurnType
 from src.providers.base_provider import BaseLLMProvider
+from src.tools.static_analysis import StaticAnalysisResult, run_slither
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,7 @@ class DebateManager:
         verbose: bool = False,
         console: Optional[Console] = None,
         web_search: bool = False,
+        static_analysis: bool = False,
     ):
         """
         Initialize the Debate Manager.
@@ -189,18 +191,22 @@ class DebateManager:
                         call via the provider's built-in search tool (Google Search
                         grounding for Gemini, web_search_20260209 for Anthropic).
                         Has no effect on OpenAI. Enabled by default.
+            static_analysis: When True, run Slither on Solidity contracts before the
+                        debate begins and inject findings into the Attacker's scan prompt.
+                        Silently skipped if Slither is not installed or for non-.sol files.
         """
         self.provider = provider
         self.max_rounds = max_rounds
         self.judge_clarification_trigger = judge_clarification_trigger
         self.verbose = verbose
         self.web_search = web_search
+        self.static_analysis = static_analysis
         self.console = console or Console()
 
         logger.debug(
             f"Initializing DebateManager with provider={provider.provider_name}, "
             f"max_rounds={max_rounds}, judge_trigger={judge_clarification_trigger.value}, "
-            f"web_search={web_search}"
+            f"web_search={web_search}, static_analysis={static_analysis}"
         )
 
         # Initialize agents — propagate web_search flag to all three
@@ -240,6 +246,29 @@ class DebateManager:
         conversation = Conversation(contract_path)
         result.conversation = conversation
 
+        # Pre-Phase: Optional Slither static analysis
+        static_analysis_result: Optional[StaticAnalysisResult] = None
+        static_analysis_context = ""
+        if self.static_analysis:
+            logger.info("Pre-Phase: Running Slither static analysis")
+            if self.verbose:
+                self.console.print("[bold blue]Pre-Phase:[/bold blue] Running Slither...")
+            static_analysis_result = run_slither(contract_path)
+            static_analysis_context = static_analysis_result.format_for_prompt()
+            if self.verbose:
+                if static_analysis_result.skipped:
+                    self.console.print(
+                        f"[yellow]Slither skipped:[/yellow] {static_analysis_result.skip_reason}"
+                    )
+                elif static_analysis_result.error:
+                    self.console.print(
+                        f"[yellow]Slither error:[/yellow] {static_analysis_result.error}"
+                    )
+                else:
+                    self.console.print(
+                        f"[green]Slither found {len(static_analysis_result.findings)} issue(s)[/green]"
+                    )
+
         # Phase 1: Attacker scans for vulnerabilities
         logger.info("Phase 1: Attacker Agent scanning for vulnerabilities")
         if self.verbose:
@@ -248,6 +277,7 @@ class DebateManager:
         logger.debug(f"Sending contract to Attacker Agent (length: {len(contract_code)} chars)")
         attacker_response = await self.attacker.analyze({
             "contract_code": contract_code,
+            "static_analysis_context": static_analysis_context,
         })
         logger.debug(f"Attacker response received: {attacker_response.tokens_used} tokens")
 
@@ -315,6 +345,9 @@ class DebateManager:
         result.metadata["max_rounds"] = self.max_rounds
         result.metadata["judge_clarification_trigger"] = self.judge_clarification_trigger.value
         result.metadata["web_search"] = self.web_search
+        result.metadata["static_analysis"] = (
+            static_analysis_result.to_dict() if static_analysis_result else None
+        )
 
         return result.to_dict()
 
