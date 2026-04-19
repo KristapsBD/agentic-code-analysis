@@ -171,6 +171,139 @@ class TestParseJsonResponse:
         assert json.loads(repaired)["key"].startswith('he said "hello')
 
 
+class TestWebSearchPipeline:
+    """Verify that web_search=True actually reaches provider.complete() during agent analysis.
+
+    The provider-level tests (TestAnthropicWebSearch, TestOpenAIWebSearch) only check
+    request construction inside the provider. These tests check the layer above:
+    does the --web-search flag propagate from Agent.__init__ through _send_message_json
+    all the way to provider.complete(web_search=True)?
+    """
+
+    def _make_provider(self, response_content: str):
+        provider = MagicMock()
+        provider.provider_name = "test"
+        provider.model = "test-model"
+        provider.complete = AsyncMock(
+            return_value=LLMResponse(content=response_content, model="test-model", tokens_used=100)
+        )
+        return provider
+
+    @pytest.mark.asyncio
+    async def test_attacker_passes_web_search_to_provider(self):
+        """AttackerAgent.analyze() must call provider.complete with web_search=True."""
+        provider = self._make_provider('{"vulnerabilities": []}')
+        attacker = AttackerAgent(provider, web_search=True)
+
+        await attacker.analyze({
+            "contract_code": "contract T {}",
+            "contract_path": "t.sol",
+            "language": "solidity",
+        })
+
+        _, call_kwargs = provider.complete.call_args
+        assert call_kwargs.get("web_search") is True, (
+            "web_search=True must reach provider.complete — "
+            "if it doesn't, the API never receives the search tool"
+        )
+
+    @pytest.mark.asyncio
+    async def test_defender_passes_web_search_to_provider(self):
+        """DefenderAgent.analyze() must call provider.complete with web_search=True."""
+        provider = self._make_provider(
+            '{"verdict": "INVALID_CLAIM", "defense": "Safe", "evidence": "", '
+            '"mitigations_found": [], "recommended_severity": "none", "confidence": 0.9}'
+        )
+        claim = VulnerabilityClaim(
+            id="c1", vulnerability_type="Reentrancy", severity="high",
+            location="withdraw()", description="Test", evidence="Test",
+            confidence=ConfidenceLevel.HIGH,
+        )
+        defender = DefenderAgent(provider, web_search=True)
+
+        await defender.analyze({"contract_code": "contract T {}", "claim": claim})
+
+        _, call_kwargs = provider.complete.call_args
+        assert call_kwargs.get("web_search") is True
+
+    @pytest.mark.asyncio
+    async def test_judge_passes_web_search_to_provider(self):
+        """JudgeAgent.analyze() must call provider.complete with web_search=True."""
+        provider = self._make_provider(
+            '{"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": "HIGH", '
+            '"reasoning": "Confirmed.", "recommendation": "Fix it.", '
+            '"attacker_score": 0.8, "defender_score": 0.3}'
+        )
+        claim = VulnerabilityClaim(
+            id="c1", vulnerability_type="Reentrancy", severity="high",
+            location="withdraw()", description="Test", evidence="Test",
+            confidence=ConfidenceLevel.HIGH,
+        )
+        judge = JudgeAgent(provider, web_search=True)
+
+        await judge.analyze({
+            "contract_code": "contract T {}",
+            "claim": claim,
+            "attacker_argument": "Vulnerable",
+            "defender_argument": "Not vulnerable",
+        })
+
+        _, call_kwargs = provider.complete.call_args
+        assert call_kwargs.get("web_search") is True
+
+    @pytest.mark.asyncio
+    async def test_agents_always_pass_json_mode_true(self):
+        """All agent LLM calls go through _send_message_json, which hardcodes json_mode=True.
+
+        This is why Gemini's effective_web_search = web_search and not json_mode
+        evaluates to False — web search is structurally disabled for Gemini regardless
+        of the --web-search flag. The test documents this interaction explicitly.
+        """
+        provider = self._make_provider('{"vulnerabilities": []}')
+        attacker = AttackerAgent(provider, web_search=True)
+
+        await attacker.analyze({
+            "contract_code": "contract T {}",
+            "contract_path": "t.sol",
+            "language": "solidity",
+        })
+
+        _, call_kwargs = provider.complete.call_args
+        assert call_kwargs.get("json_mode") is True, "all agent calls must use json_mode=True"
+        assert call_kwargs.get("web_search") is True
+
+    def test_debate_manager_propagates_web_search_to_all_agents(self):
+        """DebateManager(web_search=True) must set web_search=True on all three agents."""
+        from src.orchestration.debate_manager import DebateManager
+
+        provider = MagicMock()
+        provider.provider_name = "test"
+        provider.model = "test-model"
+        dm = DebateManager(
+            provider=provider,
+            max_rounds=2,
+            judge_clarification_trigger=ConfidenceLevel.LOW,
+            web_search=True,
+        )
+
+        assert dm.attacker.web_search is True, "Attacker must inherit web_search=True"
+        assert dm.defender.web_search is True, "Defender must inherit web_search=True"
+        assert dm.judge.web_search is True, "Judge must inherit web_search=True"
+
+    def test_debate_manager_web_search_false_by_default(self):
+        """Without explicit web_search=True, all agents must default to web_search=False."""
+        from src.orchestration.debate_manager import DebateManager
+
+        provider = MagicMock()
+        provider.provider_name = "test"
+        provider.model = "test-model"
+        dm = DebateManager(provider=provider, max_rounds=2, judge_clarification_trigger=ConfidenceLevel.LOW)
+
+        assert dm.attacker.web_search is False
+        assert dm.defender.web_search is False
+        assert dm.judge.web_search is False
+
+
 class TestVerdict:
 
     def test_verdict_to_dict(self):

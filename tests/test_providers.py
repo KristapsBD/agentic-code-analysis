@@ -106,6 +106,21 @@ class TestProviderFactory:
 # Web search tests
 # ---------------------------------------------------------------------------
 
+def _make_anthropic_mock_response(text="Answer.", model="claude-3-5-sonnet-20241022", extra_blocks=None):
+    """Build a minimal Anthropic API mock response."""
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = text
+    blocks = [text_block] + (extra_blocks or [])
+    mock_response = MagicMock()
+    mock_response.content = blocks
+    mock_response.model = model
+    mock_response.usage = MagicMock(input_tokens=20, output_tokens=10)
+    mock_response.stop_reason = "end_turn"
+    mock_response.model_dump = MagicMock(return_value={})
+    return mock_response
+
+
 class TestAnthropicWebSearch:
 
     @pytest.fixture
@@ -114,40 +129,200 @@ class TestAnthropicWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_adds_tool_to_request(self, provider):
-        mock_block = MagicMock()
-        mock_block.type = "text"
-        mock_block.text = "Here is the answer."
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
-        mock_response.model = "claude-3-5-sonnet-20241022"
-        mock_response.usage = MagicMock(input_tokens=20, output_tokens=10)
-        mock_response.stop_reason = "end_turn"
-        mock_response.model_dump = MagicMock(return_value={})
-        provider.client.messages.create = AsyncMock(return_value=mock_response)
+        """web_search=True must attach the web_search_20260209 tool descriptor to the API request."""
+        provider.client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response("Here is the answer.")
+        )
 
         await provider.complete([Message(role="user", content="What is the latest ETH price?")], web_search=True)
 
         call_kwargs = provider.client.messages.create.call_args.kwargs
         assert "tools" in call_kwargs
-        assert any(t.get("type") == "web_search_20260209" and t.get("name") == "web_search" for t in call_kwargs["tools"])
+        assert any(
+            t.get("type") == "web_search_20260209" and t.get("name") == "web_search"
+            for t in call_kwargs["tools"]
+        )
 
     @pytest.mark.asyncio
     async def test_no_web_search_by_default(self, provider):
-        mock_block = MagicMock()
-        mock_block.type = "text"
-        mock_block.text = "Answer."
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
-        mock_response.model = "claude-3-5-sonnet-20241022"
-        mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
-        mock_response.stop_reason = "end_turn"
-        mock_response.model_dump = MagicMock(return_value={})
-        provider.client.messages.create = AsyncMock(return_value=mock_response)
+        """Without web_search=True the tools key must be absent from the request."""
+        provider.client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response()
+        )
 
         await provider.complete([Message(role="user", content="Hello")])
 
         call_kwargs = provider.client.messages.create.call_args.kwargs
         assert "tools" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_web_search_not_suppressed_by_json_mode(self, provider):
+        """Anthropic must send the search tool even when json_mode=True.
+
+        Every agent calls _send_message_json which passes json_mode=True.
+        Unlike Gemini, Anthropic's json_mode is a no-op (JSON is enforced via
+        prompt), so web_search must NOT be silently disabled.
+        """
+        provider.client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response('{"vulnerabilities": []}')
+        )
+
+        await provider.complete(
+            [Message(role="user", content="Analyse this contract.")],
+            web_search=True,
+            json_mode=True,
+        )
+
+        call_kwargs = provider.client.messages.create.call_args.kwargs
+        assert "tools" in call_kwargs, (
+            "web_search must not be suppressed by json_mode for Anthropic — "
+            "all agents pass json_mode=True, so suppressing here means search never fires"
+        )
+        assert any(t.get("type") == "web_search_20260209" for t in call_kwargs["tools"])
+
+    @pytest.mark.asyncio
+    async def test_web_search_response_extracts_text_only(self, provider):
+        """When the model actually uses search, its response mixes text and tool_use blocks.
+
+        The provider must strip non-text blocks and return only the text content —
+        this is the real code path exercised when search is triggered.
+        """
+        search_block = MagicMock()
+        search_block.type = "server_tool_use"
+        # Deliberately no .text attribute — mirrors a real Anthropic search result block
+
+        provider.client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(
+                "Based on my research, Solidity 0.8.28 is current.",
+                extra_blocks=[search_block],
+            )
+        )
+
+        response = await provider.complete(
+            [Message(role="user", content="Latest Solidity version?")],
+            web_search=True,
+        )
+
+        assert response.content == "Based on my research, Solidity 0.8.28 is current."
+        # The search block must not bleed into the text content
+        assert "server_tool_use" not in response.content
+
+
+class TestOpenAIWebSearch:
+
+    @pytest.fixture
+    def provider(self):
+        return OpenAIProvider(api_key="test-key", model="gpt-4o")
+
+    def _mock_response(self, content="Test response", model="gpt-4o-search-preview", annotations=None):
+        message = MagicMock()
+        message.content = content
+        message.annotations = annotations if annotations is not None else []
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=message, finish_reason="stop")]
+        mock_response.usage = MagicMock(total_tokens=100, prompt_tokens=60, completion_tokens=40)
+        mock_response.model = model
+        mock_response.model_dump = MagicMock(return_value={})
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_web_search_adds_options_to_request(self, provider):
+        """web_search=True must attach web_search_options to the API request."""
+        provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
+
+        await provider.complete(
+            [Message(role="user", content="Latest ETH price?")],
+            web_search=True,
+        )
+
+        call_kwargs = provider.client.chat.completions.create.call_args.kwargs
+        assert "web_search_options" in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_no_web_search_by_default(self, provider):
+        """Without web_search=True the web_search_options key must be absent."""
+        provider.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_response(model="gpt-4o")
+        )
+
+        await provider.complete([Message(role="user", content="Hello")])
+
+        call_kwargs = provider.client.chat.completions.create.call_args.kwargs
+        assert "web_search_options" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_web_search_switches_non_search_model(self, provider):
+        """A non-search model (gpt-4o) must be auto-upgraded to gpt-4o-search-preview."""
+        provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
+
+        await provider.complete(
+            [Message(role="user", content="Latest ETH price?")],
+            web_search=True,
+        )
+
+        call_kwargs = provider.client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "gpt-4o-search-preview"
+
+    @pytest.mark.asyncio
+    async def test_web_search_keeps_search_model_unchanged(self, provider):
+        """A model that already supports search must not be downgraded."""
+        search_provider = OpenAIProvider(api_key="test-key", model="gpt-4o-search-preview")
+        search_provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
+
+        await search_provider.complete(
+            [Message(role="user", content="Query")],
+            web_search=True,
+        )
+
+        call_kwargs = search_provider.client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["model"] == "gpt-4o-search-preview"
+
+    @pytest.mark.asyncio
+    async def test_web_search_disables_json_mode(self, provider):
+        """web_search and json_mode are mutually exclusive in OpenAI.
+
+        When both are requested, web_search wins and response_format must be absent —
+        all agents pass json_mode=True so this is the real pipeline scenario.
+        """
+        provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
+
+        await provider.complete(
+            [Message(role="user", content="Analyse this contract.")],
+            web_search=True,
+            json_mode=True,
+        )
+
+        call_kwargs = provider.client.chat.completions.create.call_args.kwargs
+        assert "response_format" not in call_kwargs, (
+            "response_format must be absent when web_search=True; "
+            "OpenAI does not support both simultaneously"
+        )
+        assert "web_search_options" in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_web_search_with_citations_parsed_correctly(self, provider):
+        """When the model cites sources the response must still be returned correctly."""
+        annotation = MagicMock()
+        annotation.type = "url_citation"
+        url_obj = MagicMock()
+        url_obj.title = "Solidity Docs"
+        url_obj.url = "https://docs.soliditylang.org"
+        annotation.url_citation = url_obj
+
+        provider.client.chat.completions.create = AsyncMock(
+            return_value=self._mock_response(
+                content="Solidity 0.8.x is the current stable release.",
+                annotations=[annotation],
+            )
+        )
+
+        response = await provider.complete(
+            [Message(role="user", content="Latest Solidity version?")],
+            web_search=True,
+        )
+
+        assert response.content == "Solidity 0.8.x is the current stable release."
+        assert response.finish_reason == "stop"
 
 
 class TestGeminiWebSearch:
@@ -177,6 +352,7 @@ class TestGeminiWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_adds_google_search_tool(self, provider):
+        """web_search=True (without json_mode) must attach GoogleSearch grounding."""
         from google.genai import types
 
         mock_response = MagicMock()
@@ -199,6 +375,7 @@ class TestGeminiWebSearch:
 
     @pytest.mark.asyncio
     async def test_no_web_search_by_default(self, provider):
+        """Without web_search=True no tools must be attached."""
         mock_response = MagicMock()
         mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="Answer", spec=["text"])]))]
         mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
@@ -214,3 +391,40 @@ class TestGeminiWebSearch:
         await provider.complete([Message(role="user", content="Hello")])
 
         assert not captured_config["config"].tools
+
+    @pytest.mark.asyncio
+    async def test_web_search_suppressed_by_json_mode(self, provider):
+        """Gemini silently disables web search when json_mode=True.
+
+        All agents call _send_message_json which forces json_mode=True, meaning
+        web search is structurally never active for Gemini pipelines.
+        The --web-search flag is a no-op for Gemini.
+        """
+        mock_response = MagicMock()
+        mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="{}", spec=["text"])]))]
+        mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
+
+        captured_config = {}
+
+        async def fake_generate(model, contents, config):
+            captured_config["config"] = config
+            return mock_response
+
+        provider.client.aio.models.generate_content = fake_generate
+
+        await provider.complete(
+            [Message(role="user", content="Analyse this contract.")],
+            web_search=True,
+            json_mode=True,  # always True in practice (all agents use _send_message_json)
+        )
+
+        config = captured_config["config"]
+        # GoogleSearch tool must be absent — json_mode suppresses it
+        from google.genai import types
+        has_search_tool = config.tools and any(
+            isinstance(t, types.Tool) and t.google_search is not None for t in config.tools
+        )
+        assert not has_search_tool, (
+            "Gemini disables web search when json_mode=True; "
+            "the --web-search flag is effectively a no-op for Gemini pipelines"
+        )
