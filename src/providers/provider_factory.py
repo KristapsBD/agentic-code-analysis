@@ -1,9 +1,4 @@
-"""
-Factory for creating LLM provider instances.
-
-Provides a clean interface for instantiating the appropriate
-LLM provider based on configuration.
-"""
+"""Factory for creating LLM provider instances."""
 
 from typing import Optional
 
@@ -23,20 +18,6 @@ class ProviderFactory:
         model: Optional[str] = None,
         temperature: Optional[float] = None,
     ) -> BaseLLMProvider:
-        """
-        Create an LLM provider instance.
-
-        Args:
-            provider: The LLM provider to use (defaults to settings)
-            model: Model to use (defaults to provider's default)
-            temperature: Sampling temperature (defaults to settings)
-
-        Returns:
-            An instance of the appropriate LLM provider
-
-        Raises:
-            ValueError: If provider is unknown or API key is not configured
-        """
         provider = provider or settings.default_provider
         resolved_temperature = temperature if temperature is not None else 0.7
         model = model or settings.get_model_for_provider(provider)
@@ -61,18 +42,7 @@ class ProviderFactory:
     def create_all_configured(
         temperature: Optional[float] = None,
     ) -> dict[str, BaseLLMProvider]:
-        """
-        Create instances of all configured providers.
-
-        Returns a dictionary mapping provider names to provider instances
-        for all providers that have API keys configured.
-
-        Args:
-            temperature: Sampling temperature (defaults to settings)
-
-        Returns:
-            Dictionary of provider name -> provider instance
-        """
+        """Return a dict of provider name → instance for all providers with API keys set."""
         providers = {}
 
         for provider in LLMProvider:

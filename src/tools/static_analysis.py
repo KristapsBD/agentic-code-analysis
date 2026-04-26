@@ -1,16 +1,4 @@
-"""
-Static analysis tool integration for smart contract vulnerability detection.
-
-Runs Slither on a Solidity contract file and returns structured findings that
-ground agent reasoning before the debate begins.
-
-Uses Slither's Python API (slither-analyzer package) directly rather than
-shelling out to the CLI. Compiler version management still uses solc-select
-to install and activate the version required by each contract's pragma.
-
-Slither is only supported for Solidity (.sol) contracts. Non-Solidity files are
-silently skipped and the agents proceed without static analysis context.
-"""
+"""Static analysis via the Slither Python API (not CLI); Solidity-only, non-.sol files are silently skipped."""
 
 import logging
 import re
@@ -143,11 +131,7 @@ def _find_best_version(spec: SpecifierSet) -> Optional[str]:
 
 
 def _resolve_solc_version(source_code: str) -> Optional[str]:
-    """Determine the solc version required by the contract's pragma.
-
-    Returns the best matching version string from _KNOWN_VERSIONS, or None if
-    no pragma is found and the fallback version cannot be resolved.
-    """
+    """Determine the solc version required by the contract's pragma; returns None if no match found."""
     pragma_match = re.search(r'pragma\s+solidity\s+([^;]+);', source_code)
 
     if pragma_match:
@@ -200,7 +184,6 @@ def _activate_solc(version: str) -> bool:
 
 @dataclass
 class StaticFinding:
-    """A single finding from Slither."""
     detector: str
     vuln_type: str
     impact: str
@@ -221,7 +204,6 @@ class StaticFinding:
 
 @dataclass
 class StaticAnalysisResult:
-    """Result from running Slither on a contract."""
     tool: str
     findings: list[StaticFinding] = field(default_factory=list)
     error: Optional[str] = None
@@ -276,7 +258,6 @@ def is_slither_available() -> bool:
 
 
 def run_slither(contract_path: str) -> StaticAnalysisResult:
-    """Run Slither on a Solidity contract and return structured findings."""
     path = Path(contract_path)
 
     if path.suffix.lower() != ".sol":

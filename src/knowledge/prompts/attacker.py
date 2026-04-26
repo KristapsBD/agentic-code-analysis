@@ -1,9 +1,4 @@
-"""
-Prompt templates for the Attacker Agent.
-
-The Attacker Agent identifies genuine, exploitable vulnerabilities.
-Every claim must be grounded in specific code evidence and a traceable exploit path.
-"""
+"""Prompt templates for the Attacker Agent."""
 
 # Canonical vulnerability type labels used across the system.
 # The attacker prompt, evaluator, and report all reference this set.

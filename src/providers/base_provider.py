@@ -12,8 +12,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class LLMResponse:
-    """Response from an LLM provider."""
-
     content: str
     model: str
     tokens_used: int = 0
@@ -29,8 +27,6 @@ class LLMResponse:
 
 @dataclass
 class Message:
-    """A message in a conversation."""
-
     role: str  # "system", "user", or "assistant"
     content: str
 
@@ -54,7 +50,6 @@ class BaseLLMProvider(ABC):
     @property
     @abstractmethod
     def provider_name(self) -> str:
-        """Return the name of the provider."""
         pass
 
     @abstractmethod
@@ -65,7 +60,6 @@ class BaseLLMProvider(ABC):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """Send messages to the LLM and return a response."""
         pass
 
     async def complete_simple(
@@ -127,7 +121,6 @@ class BaseLLMProvider(ABC):
                     raise
 
     def _validate_messages(self, messages: list[Message]) -> None:
-        """Validate that messages are properly formatted."""
         if not messages:
             raise ValueError("Messages list cannot be empty")
 

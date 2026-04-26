@@ -9,15 +9,10 @@ from src.providers.base_provider import BaseLLMProvider, LLMResponse, Message
 
 logger = logging.getLogger(__name__)
 
-# Anthropic server-tool descriptor for web search.
-# Uses the latest version (web_search_20260209) which supports dynamic
-# filtering on claude-sonnet-4-6 and claude-opus-4-6.
-# The "name" field is required by the Anthropic API.
+# "name" field is required; type string pins the tool version.
 _WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 
-# Anthropic's messages API requires max_tokens to be set explicitly.
-# Audit JSON responses are well under 4K tokens; 8192 gives headroom without
-# triggering the SDK's streaming requirement (enforced above ~10 min requests).
+# max_tokens is required by the Anthropic API; 8192 gives headroom without triggering streaming.
 _ANTHROPIC_MAX_TOKENS = 8192
 
 

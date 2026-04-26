@@ -1,7 +1,3 @@
-"""
-Tests for LLM provider implementations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -102,12 +98,8 @@ class TestProviderFactory:
             ProviderFactory.create(LLMProvider.OPENAI)
 
 
-# ---------------------------------------------------------------------------
-# Web search tests
-# ---------------------------------------------------------------------------
 
 def _make_anthropic_mock_response(text="Answer.", model="claude-3-5-sonnet-20241022", extra_blocks=None):
-    """Build a minimal Anthropic API mock response."""
     text_block = MagicMock()
     text_block.type = "text"
     text_block.text = text
@@ -129,7 +121,6 @@ class TestAnthropicWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_adds_tool_to_request(self, provider):
-        """web_search=True must attach the web_search_20260209 tool descriptor to the API request."""
         provider.client.messages.create = AsyncMock(
             return_value=_make_anthropic_mock_response("Here is the answer.")
         )
@@ -145,7 +136,6 @@ class TestAnthropicWebSearch:
 
     @pytest.mark.asyncio
     async def test_no_web_search_by_default(self, provider):
-        """Without web_search=True the tools key must be absent from the request."""
         provider.client.messages.create = AsyncMock(
             return_value=_make_anthropic_mock_response()
         )
@@ -157,12 +147,6 @@ class TestAnthropicWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_not_suppressed_by_json_mode(self, provider):
-        """Anthropic must send the search tool even when json_mode=True.
-
-        Every agent calls _send_message_json which passes json_mode=True.
-        Unlike Gemini, Anthropic's json_mode is a no-op (JSON is enforced via
-        prompt), so web_search must NOT be silently disabled.
-        """
         provider.client.messages.create = AsyncMock(
             return_value=_make_anthropic_mock_response('{"vulnerabilities": []}')
         )
@@ -182,11 +166,6 @@ class TestAnthropicWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_response_extracts_text_only(self, provider):
-        """When the model actually uses search, its response mixes text and tool_use blocks.
-
-        The provider must strip non-text blocks and return only the text content —
-        this is the real code path exercised when search is triggered.
-        """
         search_block = MagicMock()
         search_block.type = "server_tool_use"
         # Deliberately no .text attribute — mirrors a real Anthropic search result block
@@ -204,7 +183,6 @@ class TestAnthropicWebSearch:
         )
 
         assert response.content == "Based on my research, Solidity 0.8.28 is current."
-        # The search block must not bleed into the text content
         assert "server_tool_use" not in response.content
 
 
@@ -227,7 +205,6 @@ class TestOpenAIWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_adds_options_to_request(self, provider):
-        """web_search=True must attach web_search_options to the API request."""
         provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
 
         await provider.complete(
@@ -240,7 +217,6 @@ class TestOpenAIWebSearch:
 
     @pytest.mark.asyncio
     async def test_no_web_search_by_default(self, provider):
-        """Without web_search=True the web_search_options key must be absent."""
         provider.client.chat.completions.create = AsyncMock(
             return_value=self._mock_response(model="gpt-4o")
         )
@@ -252,7 +228,6 @@ class TestOpenAIWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_switches_non_search_model(self, provider):
-        """A non-search model (gpt-4o) must be auto-upgraded to gpt-4o-search-preview."""
         provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
 
         await provider.complete(
@@ -265,7 +240,6 @@ class TestOpenAIWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_keeps_search_model_unchanged(self, provider):
-        """A model that already supports search must not be downgraded."""
         search_provider = OpenAIProvider(api_key="test-key", model="gpt-4o-search-preview")
         search_provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
 
@@ -279,11 +253,6 @@ class TestOpenAIWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_disables_json_mode(self, provider):
-        """web_search and json_mode are mutually exclusive in OpenAI.
-
-        When both are requested, web_search wins and response_format must be absent —
-        all agents pass json_mode=True so this is the real pipeline scenario.
-        """
         provider.client.chat.completions.create = AsyncMock(return_value=self._mock_response())
 
         await provider.complete(
@@ -301,7 +270,6 @@ class TestOpenAIWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_with_citations_parsed_correctly(self, provider):
-        """When the model cites sources the response must still be returned correctly."""
         annotation = MagicMock()
         annotation.type = "url_citation"
         url_obj = MagicMock()
@@ -352,7 +320,6 @@ class TestGeminiWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_adds_google_search_tool(self, provider):
-        """web_search=True (without json_mode) must attach GoogleSearch grounding."""
         from google.genai import types
 
         mock_response = MagicMock()
@@ -375,7 +342,6 @@ class TestGeminiWebSearch:
 
     @pytest.mark.asyncio
     async def test_no_web_search_by_default(self, provider):
-        """Without web_search=True no tools must be attached."""
         mock_response = MagicMock()
         mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="Answer", spec=["text"])]))]
         mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
@@ -394,12 +360,6 @@ class TestGeminiWebSearch:
 
     @pytest.mark.asyncio
     async def test_web_search_suppressed_by_json_mode(self, provider):
-        """Gemini silently disables web search when json_mode=True.
-
-        All agents call _send_message_json which forces json_mode=True, meaning
-        web search is structurally never active for Gemini pipelines.
-        The --web-search flag is a no-op for Gemini.
-        """
         mock_response = MagicMock()
         mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="{}", spec=["text"])]))]
         mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
@@ -415,11 +375,10 @@ class TestGeminiWebSearch:
         await provider.complete(
             [Message(role="user", content="Analyse this contract.")],
             web_search=True,
-            json_mode=True,  # always True in practice (all agents use _send_message_json)
+            json_mode=True,
         )
 
         config = captured_config["config"]
-        # GoogleSearch tool must be absent — json_mode suppresses it
         from google.genai import types
         has_search_tool = config.tools and any(
             isinstance(t, types.Tool) and t.google_search is not None for t in config.tools

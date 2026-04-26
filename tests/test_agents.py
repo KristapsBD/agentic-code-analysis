@@ -1,7 +1,3 @@
-"""
-Tests for agent implementations.
-"""
-
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -172,13 +168,6 @@ class TestParseJsonResponse:
 
 
 class TestWebSearchPipeline:
-    """Verify that web_search=True actually reaches provider.complete() during agent analysis.
-
-    The provider-level tests (TestAnthropicWebSearch, TestOpenAIWebSearch) only check
-    request construction inside the provider. These tests check the layer above:
-    does the --web-search flag propagate from Agent.__init__ through _send_message_json
-    all the way to provider.complete(web_search=True)?
-    """
 
     def _make_provider(self, response_content: str):
         provider = MagicMock()
@@ -191,7 +180,6 @@ class TestWebSearchPipeline:
 
     @pytest.mark.asyncio
     async def test_attacker_passes_web_search_to_provider(self):
-        """AttackerAgent.analyze() must call provider.complete with web_search=True."""
         provider = self._make_provider('{"vulnerabilities": []}')
         attacker = AttackerAgent(provider, web_search=True)
 
@@ -209,7 +197,6 @@ class TestWebSearchPipeline:
 
     @pytest.mark.asyncio
     async def test_defender_passes_web_search_to_provider(self):
-        """DefenderAgent.analyze() must call provider.complete with web_search=True."""
         provider = self._make_provider(
             '{"verdict": "INVALID_CLAIM", "defense": "Safe", "evidence": "", '
             '"mitigations_found": [], "recommended_severity": "none", "confidence": 0.9}'
@@ -228,7 +215,6 @@ class TestWebSearchPipeline:
 
     @pytest.mark.asyncio
     async def test_judge_passes_web_search_to_provider(self):
-        """JudgeAgent.analyze() must call provider.complete with web_search=True."""
         provider = self._make_provider(
             '{"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": "HIGH", '
             '"reasoning": "Confirmed.", "recommendation": "Fix it.", '
@@ -253,12 +239,6 @@ class TestWebSearchPipeline:
 
     @pytest.mark.asyncio
     async def test_agents_always_pass_json_mode_true(self):
-        """All agent LLM calls go through _send_message_json, which hardcodes json_mode=True.
-
-        This is why Gemini's effective_web_search = web_search and not json_mode
-        evaluates to False — web search is structurally disabled for Gemini regardless
-        of the --web-search flag. The test documents this interaction explicitly.
-        """
         provider = self._make_provider('{"vulnerabilities": []}')
         attacker = AttackerAgent(provider, web_search=True)
 
@@ -273,7 +253,6 @@ class TestWebSearchPipeline:
         assert call_kwargs.get("web_search") is True
 
     def test_debate_manager_propagates_web_search_to_all_agents(self):
-        """DebateManager(web_search=True) must set web_search=True on all three agents."""
         from src.orchestration.debate_manager import DebateManager
 
         provider = MagicMock()
@@ -291,7 +270,6 @@ class TestWebSearchPipeline:
         assert dm.judge.web_search is True, "Judge must inherit web_search=True"
 
     def test_debate_manager_web_search_false_by_default(self):
-        """Without explicit web_search=True, all agents must default to web_search=False."""
         from src.orchestration.debate_manager import DebateManager
 
         provider = MagicMock()

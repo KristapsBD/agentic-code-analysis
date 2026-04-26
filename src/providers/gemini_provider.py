@@ -39,10 +39,7 @@ class GeminiProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """Send messages to Gemini.
-
-        When json_mode=True, web_search is automatically disabled
-        """
+        """Send messages to Gemini; web_search is disabled when json_mode=True."""
         self._validate_messages(messages)
 
         system_instruction, contents = self._build_contents(messages)
@@ -132,10 +129,6 @@ class GeminiProvider(BaseLLMProvider):
             finish_reason=finish_reason,
             raw_response=None,  # proto objects are not JSON-serialisable
         )
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
 
     async def _call_api(
         self,

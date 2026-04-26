@@ -29,7 +29,6 @@ class DefenderAgent(BaseAgent):
         )
 
     async def analyze(self, context: dict) -> AgentResponse:
-        """Review a vulnerability claim and provide a defense."""
         contract_code = context.get("contract_code", "")
         claim = context.get("claim")
 
@@ -100,7 +99,6 @@ class DefenderAgent(BaseAgent):
         )
 
     async def respond_to_clarification(self, context: dict) -> AgentResponse:
-        """Respond to the Judge's clarification question."""
         claim = context.get("original_claim", {})
         judge_question = context.get("judge_question", "")
 

@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
-# Load environment variables from .env file (if it exists and is readable)
 try:
     load_dotenv()
 except (PermissionError, FileNotFoundError):
@@ -28,13 +27,11 @@ def setup_logging(log_level: str = "INFO") -> Optional[Path]:
     root = logging.getLogger()
     root.setLevel(numeric_level)
 
-    # Console handler — always present
     console_handler = logging.StreamHandler()
     console_handler.setLevel(numeric_level)
     console_handler.setFormatter(fmt)
     root.addHandler(console_handler)
 
-    # File handler — only when DEBUG is requested
     if numeric_level == logging.DEBUG:
         log_dir = Path("data/logs")
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -50,8 +47,6 @@ def setup_logging(log_level: str = "INFO") -> Optional[Path]:
 
 
 class LLMProvider(str, Enum):
-    """Supported LLM providers."""
-
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
@@ -142,7 +137,6 @@ class Settings(BaseSettings):
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
-        """Validate log level is a valid Python logging level."""
         valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         upper_v = v.upper()
         if upper_v not in valid_levels:
@@ -150,7 +144,6 @@ class Settings(BaseSettings):
         return upper_v
 
     def get_model_for_provider(self, provider: Optional[LLMProvider] = None) -> str:
-        """Return the configured default model for the given provider."""
         provider = provider or self.default_provider
         models = {
             LLMProvider.OPENAI: self.default_model_openai,
@@ -162,7 +155,6 @@ class Settings(BaseSettings):
         return models[provider]
 
     def get_api_key_for_provider(self, provider: Optional[LLMProvider] = None) -> Optional[str]:
-        """Return the API key for the given provider."""
         provider = provider or self.default_provider
         keys = {
             LLMProvider.OPENAI: self.openai_api_key,
@@ -174,7 +166,6 @@ class Settings(BaseSettings):
         return keys[provider]
 
     def validate_provider_config(self, provider: Optional[LLMProvider] = None) -> None:
-        """Raise ValueError if the provider's API key is not configured."""
         provider = provider or self.default_provider
         api_key = self.get_api_key_for_provider(provider)
         if not api_key:
@@ -184,5 +175,4 @@ class Settings(BaseSettings):
             )
 
 
-# Global settings instance
 settings = Settings()

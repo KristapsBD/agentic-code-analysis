@@ -1,9 +1,4 @@
-"""
-Prompt templates for the Defender Agent.
-
-The Defender Agent objectively evaluates vulnerability claims — providing
-specific technical rebuttals against false positives and acknowledging real ones.
-"""
+"""Prompt templates for the Defender Agent."""
 
 DEFENDER_SYSTEM_PROMPT = """You are an expert smart contract security auditor acting as the DEFENDER in an adversarial audit system.
 

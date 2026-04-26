@@ -1,9 +1,4 @@
-"""
-Prompt templates for the Judge Agent.
-
-The Judge Agent acts as an impartial arbiter, evaluating arguments
-from both sides based on technical evidence quality.
-"""
+"""Prompt templates for the Judge Agent."""
 
 JUDGE_SYSTEM_PROMPT = """You are an expert smart contract security auditor acting as the impartial JUDGE in an adversarial audit system.
 

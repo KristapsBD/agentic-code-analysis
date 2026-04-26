@@ -15,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class AgentRole(str, Enum):
-    """Roles that agents can take in the system."""
-
     ATTACKER = "attacker"
     DEFENDER = "defender"
     JUDGE = "judge"
@@ -24,8 +22,6 @@ class AgentRole(str, Enum):
 
 @dataclass
 class VulnerabilityClaim:
-    """A vulnerability claim made by an agent."""
-
     id: str
     vulnerability_type: str
     severity: str  # "critical", "high", "medium", "low", "info"
@@ -48,8 +44,6 @@ class VulnerabilityClaim:
 
 @dataclass
 class AgentResponse:
-    """Response from an agent's analysis."""
-
     agent_role: AgentRole
     content: str
     claims: list[VulnerabilityClaim] = field(default_factory=list)
@@ -71,10 +65,7 @@ class AgentResponse:
 
 
 class BaseAgent(ABC):
-    """Base class for Attacker, Defender, and Judge agents.
-
-    History accumulates within a single claim's debate and is cleared between claims.
-    """
+    """History accumulates within a single claim's debate and is cleared between claims."""
 
     def __init__(
         self,
@@ -94,7 +85,6 @@ class BaseAgent(ABC):
 
     @abstractmethod
     async def analyze(self, context: dict) -> AgentResponse:
-        """Perform agent-specific analysis."""
         pass
 
     async def _send_message(
@@ -153,7 +143,6 @@ class BaseAgent(ABC):
         include_history: bool = True,
         temperature: Optional[float] = None,
     ) -> dict[str, Any]:
-        """Send a message and return the response parsed as JSON."""
         json_instruction = (
             "\n\nIMPORTANT: Your entire response MUST be a single, complete, valid JSON object. "
             "Start your response with '{' and end it with '}'. "
@@ -270,7 +259,6 @@ class BaseAgent(ABC):
     def _parse_confidence_level(
         value: Any, default: ConfidenceLevel = ConfidenceLevel.MEDIUM
     ) -> ConfidenceLevel:
-        """Parse a value into a ConfidenceLevel enum member."""
         if value is None:
             return default
         if isinstance(value, ConfidenceLevel):
@@ -293,7 +281,6 @@ class BaseAgent(ABC):
 
     @staticmethod
     def _to_claim_dict(claim: Any) -> dict:
-        """Convert a VulnerabilityClaim or dict to a plain dict."""
         return claim.to_dict() if isinstance(claim, VulnerabilityClaim) else claim
 
     def clear_history(self) -> None:

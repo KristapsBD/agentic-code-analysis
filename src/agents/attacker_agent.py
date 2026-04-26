@@ -32,7 +32,6 @@ class AttackerAgent(BaseAgent):
         )
 
     async def analyze(self, context: dict) -> AgentResponse:
-        """Scan the contract for vulnerabilities."""
         contract_code = context.get("contract_code", "")
 
         static_analysis_context = context.get("static_analysis_context", "")
@@ -99,7 +98,6 @@ class AttackerAgent(BaseAgent):
         )
 
     async def respond_to_clarification(self, context: dict) -> AgentResponse:
-        """Respond to the Judge's clarification question."""
         claim = context.get("original_claim", {})
         judge_question = context.get("judge_question", "")
 
@@ -128,7 +126,6 @@ class AttackerAgent(BaseAgent):
         )
 
     def _extract_claims(self, parsed: dict[str, Any]) -> list[VulnerabilityClaim]:
-        """Extract VulnerabilityClaim objects from a parsed LLM response dict."""
         claims: list[VulnerabilityClaim] = []
 
         vuln_list = parsed.get("vulnerabilities", [])

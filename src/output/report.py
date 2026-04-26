@@ -15,8 +15,6 @@ from rich.table import Table
 
 @dataclass
 class Finding:
-    """A confirmed vulnerability finding."""
-
     vulnerability_type: str
     severity: str
     location: str
@@ -43,8 +41,6 @@ class Finding:
 
 @dataclass
 class Report:
-    """A complete vulnerability analysis report."""
-
     contract_path: str
     contract_language: str
     analysis_timestamp: datetime
@@ -97,11 +93,7 @@ class Report:
 
 
 class ReportGenerator:
-    """
-    Generates formatted reports from analysis results.
-
-    Supports multiple output formats: console, JSON, and Markdown.
-    """
+    """Generates formatted reports from analysis results."""
 
     SEVERITY_COLORS = {
         "critical": "red bold",
@@ -217,13 +209,11 @@ class ReportGenerator:
         )
 
     def save_json(self, report: Report, output_path: Path) -> None:
-        """Save the report as JSON."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
             json.dump(report.to_dict(), f, indent=2, default=str)
 
     def save_markdown(self, report: Report, output_path: Path) -> None:
-        """Save the report as Markdown."""
         md_lines = [
             f"# Security Analysis Report",
             f"",

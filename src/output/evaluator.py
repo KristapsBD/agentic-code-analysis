@@ -1,9 +1,4 @@
-"""
-Evaluation module for benchmarking the adversarial agent system.
-
-Provides tools for evaluating the system against benchmark datasets
-and calculating precision, recall, and F1 scores.
-"""
+"""Evaluation module for benchmarking the adversarial agent system."""
 
 import asyncio
 import json
@@ -22,27 +17,21 @@ from src.providers.provider_factory import ProviderFactory
 
 @dataclass
 class GroundTruth:
-    """Ground truth vulnerability information for a contract."""
-
     contract_path: str
     vulnerabilities: list[dict[str, Any]]
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def vulnerability_types(self) -> set[str]:
-        """Get unique vulnerability types."""
         return {v.get("type", "unknown") for v in self.vulnerabilities}
 
     @property
     def has_vulnerabilities(self) -> bool:
-        """Check if contract has known vulnerabilities."""
         return len(self.vulnerabilities) > 0
 
 
 @dataclass
 class EvaluationResult:
-    """Result of evaluating a single contract."""
-
     contract_path: str
     ground_truth: GroundTruth
     predicted_vulnerabilities: list[dict[str, Any]]
@@ -54,7 +43,6 @@ class EvaluationResult:
 
     @property
     def precision(self) -> float:
-        """Calculate precision."""
         total_predicted = self.true_positives + self.false_positives
         if total_predicted == 0:
             return 0.0
@@ -62,7 +50,6 @@ class EvaluationResult:
 
     @property
     def recall(self) -> float:
-        """Calculate recall."""
         total_actual = self.true_positives + self.false_negatives
         if total_actual == 0:
             return 1.0  # No vulnerabilities to find
@@ -70,7 +57,6 @@ class EvaluationResult:
 
     @property
     def f1_score(self) -> float:
-        """Calculate F1 score."""
         p, r = self.precision, self.recall
         if p + r == 0:
             return 0.0
@@ -89,7 +75,6 @@ class EvaluationResult:
         return self.binary_predicted_vulnerable == self.ground_truth.has_vulnerabilities
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format."""
         return {
             "contract_path": self.contract_path,
             "true_positives": self.true_positives,
@@ -107,8 +92,6 @@ class EvaluationResult:
 
 @dataclass
 class BenchmarkResult:
-    """Complete benchmark evaluation results."""
-
     benchmark_name: str
     started_at: datetime
     completed_at: Optional[datetime] = None
@@ -121,43 +104,36 @@ class BenchmarkResult:
 
     @property
     def total_true_positives(self) -> int:
-        """Total true positives across all contracts."""
         return sum(r.true_positives for r in self.contract_results)
 
     @property
     def total_false_positives(self) -> int:
-        """Total false positives across all contracts."""
         return sum(r.false_positives for r in self.contract_results)
 
     @property
     def total_false_negatives(self) -> int:
-        """Total false negatives across all contracts."""
         return sum(r.false_negatives for r in self.contract_results)
 
     @property
     def macro_precision(self) -> float:
-        """Macro-averaged precision."""
         if not self.contract_results:
             return 0.0
         return sum(r.precision for r in self.contract_results) / len(self.contract_results)
 
     @property
     def macro_recall(self) -> float:
-        """Macro-averaged recall."""
         if not self.contract_results:
             return 0.0
         return sum(r.recall for r in self.contract_results) / len(self.contract_results)
 
     @property
     def macro_f1(self) -> float:
-        """Macro-averaged F1 score."""
         if not self.contract_results:
             return 0.0
         return sum(r.f1_score for r in self.contract_results) / len(self.contract_results)
 
     @property
     def micro_precision(self) -> float:
-        """Micro-averaged precision."""
         total_predicted = self.total_true_positives + self.total_false_positives
         if total_predicted == 0:
             return 0.0
@@ -165,7 +141,6 @@ class BenchmarkResult:
 
     @property
     def micro_recall(self) -> float:
-        """Micro-averaged recall."""
         total_actual = self.total_true_positives + self.total_false_negatives
         if total_actual == 0:
             return 1.0
@@ -173,7 +148,6 @@ class BenchmarkResult:
 
     @property
     def micro_f1(self) -> float:
-        """Micro-averaged F1 score."""
         p, r = self.micro_precision, self.micro_recall
         if p + r == 0:
             return 0.0
@@ -193,13 +167,10 @@ class BenchmarkResult:
         correct = sum(1 for r in self.contract_results if r.binary_correct)
         return correct / len(self.contract_results)
 
-    # ------------------------------------------------------------------
-    # Detection metrics — binary vulnerable/safe on the full contract set
-    # ------------------------------------------------------------------
+    # Detection metrics — binary vulnerable/safe per contract
 
     @property
     def detection_true_positives(self) -> int:
-        """Contracts correctly flagged as vulnerable."""
         return sum(
             1 for r in self.contract_results
             if r.binary_predicted_vulnerable and r.ground_truth.has_vulnerabilities
@@ -207,7 +178,6 @@ class BenchmarkResult:
 
     @property
     def detection_false_positives(self) -> int:
-        """Clean contracts incorrectly flagged as vulnerable."""
         return sum(
             1 for r in self.contract_results
             if r.binary_predicted_vulnerable and not r.ground_truth.has_vulnerabilities
@@ -215,7 +185,6 @@ class BenchmarkResult:
 
     @property
     def detection_false_negatives(self) -> int:
-        """Vulnerable contracts missed entirely."""
         return sum(
             1 for r in self.contract_results
             if not r.binary_predicted_vulnerable and r.ground_truth.has_vulnerabilities
@@ -236,13 +205,10 @@ class BenchmarkResult:
         p, r = self.detection_precision, self.detection_recall
         return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
-    # ------------------------------------------------------------------
     # Classification metrics — type accuracy on vulnerable contracts only
-    # ------------------------------------------------------------------
 
     @property
     def classification_true_positives(self) -> int:
-        """Type-level TPs restricted to contracts with known vulnerabilities."""
         return sum(
             r.true_positives for r in self.contract_results
             if r.ground_truth.has_vulnerabilities
@@ -250,7 +216,6 @@ class BenchmarkResult:
 
     @property
     def classification_false_positives(self) -> int:
-        """Type-level FPs restricted to contracts with known vulnerabilities."""
         return sum(
             r.false_positives for r in self.contract_results
             if r.ground_truth.has_vulnerabilities
@@ -258,7 +223,6 @@ class BenchmarkResult:
 
     @property
     def classification_false_negatives(self) -> int:
-        """Type-level FNs restricted to contracts with known vulnerabilities."""
         return sum(
             r.false_negatives for r in self.contract_results
             if r.ground_truth.has_vulnerabilities
@@ -280,7 +244,6 @@ class BenchmarkResult:
         return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
 
     def to_dict(self) -> dict:
-        """Convert to dictionary format."""
         return {
             "benchmark_name": self.benchmark_name,
             "started_at": self.started_at.isoformat(),
@@ -349,13 +312,6 @@ class Evaluator:
         provider: Optional[LLMProvider] = None,
         max_rounds: int = 2,
     ):
-        """
-        Initialize the evaluator.
-
-        Args:
-            provider: LLM provider to use
-            max_rounds: Maximum debate rounds
-        """
         self.provider = provider or settings.default_provider
         self.max_rounds = max_rounds
 
@@ -364,7 +320,6 @@ class Evaluator:
         benchmark_dir: Path,
         ground_truth_file: Optional[Path],
     ) -> dict[str, GroundTruth]:
-        """Load ground truth vulnerability information."""
         ground_truths = {}
 
         # Try to load from explicit file
@@ -406,7 +361,6 @@ class Evaluator:
         return ground_truths
 
     def _find_contract_files(self, benchmark_dir: Path) -> list[Path]:
-        """Find all smart contract files in the benchmark directory."""
         extensions = [".sol", ".vy", ".rs", ".move"]
         files = []
         for ext in extensions:
@@ -419,7 +373,6 @@ class Evaluator:
         analysis_result: dict,
         analysis_time: float,
     ) -> EvaluationResult:
-        """Compare analysis results with ground truth."""
         predicted = []
         for claim_result in analysis_result.get("claim_results", []):
             verdict = claim_result.get("verdict", {})
@@ -454,7 +407,6 @@ class Evaluator:
         )
 
     def _normalize_vuln_type(self, vuln_type: str) -> str:
-        """Normalize vulnerability type to canonical form."""
         vuln_lower = vuln_type.lower().replace(" ", "_").replace("-", "_")
 
         for canonical, variants in self.VULNERABILITY_TYPE_MAP.items():
@@ -471,21 +423,8 @@ class Evaluator:
         inter_contract_delay: float = 0.0,
     ) -> tuple[BenchmarkResult, BenchmarkResult, BenchmarkResult]:
         """
-        Single-pass evaluation returning multi-agent, 2-agent, and baseline results.
-
-        Runs the full multi-agent debate once per contract, then derives all three
-        architecture results from the same data — no extra API calls:
-
-        - **Multi-agent (3-agent)**: Judge-confirmed claims only
-        - **2-agent**: Claims the Attacker did not explicitly concede after debate
-        - **Baseline**: Attacker's raw initial claims, all accepted as-is
-
-        Args:
-            benchmark_dir: Directory containing benchmark contracts
-            ground_truth_file: Optional JSON file with ground truth
-
-        Returns:
-            (multi_result, two_agent_result, baseline_result) — all scored against the same ground truth
+        Single-pass evaluation: runs the full debate once per contract, then derives
+        multi-agent, 2-agent, and baseline results from the same data — no extra API calls.
         """
         model = settings.get_model_for_provider(self.provider)
 
@@ -663,18 +602,7 @@ class Evaluator:
         baseline: BenchmarkResult,
         console: Optional[Console] = None,
     ) -> None:
-        """
-        Print a side-by-side comparison of all three architectures.
-
-        Columns: Multi-Agent (3-agent) | 2-Agent | Baseline (attacker-only)
-        Delta columns show change vs the column to the right (higher architecture vs lower).
-
-        Args:
-            multi: Full Attacker → Defender → Judge pipeline
-            two_agent: Attacker + Defender only (no Judge)
-            baseline: Attacker's raw initial claims
-            console: Optional Rich Console instance
-        """
+        """Print a side-by-side comparison: 3-agent vs 2-agent vs baseline."""
         console = console or Console()
 
         table = Table(

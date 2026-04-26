@@ -1,7 +1,3 @@
-"""
-Tests for debate orchestration.
-"""
-
 import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch

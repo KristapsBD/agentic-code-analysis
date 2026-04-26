@@ -19,8 +19,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Verdict:
-    """A verdict on a vulnerability claim."""
-
     claim_id: str
     is_valid: bool
     severity: str
