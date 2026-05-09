@@ -7,7 +7,6 @@ from src.providers.base_provider import BaseLLMProvider, LLMResponse, Message
 
 logger = logging.getLogger(__name__)
 
-# Models that support web_search_options in the Chat Completions API
 _SEARCH_MODELS = {"gpt-4o-search-preview", "gpt-4o-mini-search-preview", "gpt-5-search-api"}
 _DEFAULT_SEARCH_MODEL = "gpt-4o-search-preview"
 

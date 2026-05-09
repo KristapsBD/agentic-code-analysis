@@ -39,7 +39,7 @@ class GeminiProvider(BaseLLMProvider):
 
         system_instruction, contents = self._build_contents(messages)
 
-        # Disable web search, code analysis doesn't benefit from it anyway.
+        # Disable web search, code analysis doesnt benefit from it anyway.
         effective_web_search = web_search and not json_mode
 
         config_kwargs: dict[str, Any] = {
@@ -122,7 +122,7 @@ class GeminiProvider(BaseLLMProvider):
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             finish_reason=finish_reason,
-            raw_response=None,  # proto objects are not JSON-serialisable
+            raw_response=None,
         )
 
     async def _call_api(

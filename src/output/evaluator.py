@@ -156,8 +156,6 @@ class BenchmarkResult:
         correct = sum(1 for r in self.contract_results if r.binary_correct)
         return correct / len(self.contract_results)
 
-    # Detection metrics — binary vulnerable/safe per contract
-
     @property
     def detection_true_positives(self) -> int:
         return sum(
@@ -193,8 +191,6 @@ class BenchmarkResult:
     def detection_f1(self) -> float:
         p, r = self.detection_precision, self.detection_recall
         return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
-
-    # Classification metrics — type accuracy on vulnerable contracts only
 
     @property
     def classification_true_positives(self) -> int:
@@ -304,7 +300,6 @@ class Evaluator:
     ) -> dict[str, GroundTruth]:
         ground_truths = {}
 
-        # Try to load from explicit file
         if ground_truth_file and ground_truth_file.exists():
             with open(ground_truth_file) as f:
                 data = json.load(f)
@@ -317,18 +312,15 @@ class Evaluator:
                     )
             return ground_truths
 
-        # Try SmartBugs format (vulnerabilities in filename or directory)
         for sol_file in benchmark_dir.rglob("*.sol"):
             vulnerabilities = []
 
-            # Check if parent directory indicates vulnerability type
             parent_name = sol_file.parent.name.lower()
             for canonical, variants in self.VULNERABILITY_TYPE_MAP.items():
                 if any(v in parent_name for v in variants):
                     vulnerabilities.append({"type": canonical})
                     break
 
-            # Check filename for vulnerability hints
             filename = sol_file.name.lower()
             for canonical, variants in self.VULNERABILITY_TYPE_MAP.items():
                 if any(v in filename for v in variants):
@@ -373,7 +365,6 @@ class Evaluator:
             for gt in ground_truth.vulnerabilities
         }
 
-        # Strict type matching: predicted type must equal the GT canonical label exactly.
         true_positives = sum(1 for p in predicted_types if p in ground_truth_types)
         false_positives = sum(1 for p in predicted_types if p not in ground_truth_types)
         false_negatives = sum(1 for gt in ground_truth_types if gt not in predicted_types)
@@ -460,7 +451,6 @@ class Evaluator:
                         json.dumps(analysis_result, indent=2, default=str)
                     )
 
-                # Multi-agent: only judge-confirmed claims count
                 multi_eval = self._compare_results(
                     ground_truth=ground_truth,
                     analysis_result=analysis_result,
@@ -469,8 +459,6 @@ class Evaluator:
                 multi_result.contract_results.append(multi_eval)
                 multi_result.successful_analyses += 1
 
-                # 2-agent: claims the attacker did NOT concede after seeing the defense
-                # (attacker wins ties — claim is valid unless explicitly retracted)
                 two_agent_eval = self._compare_results_two_agent(
                     ground_truth=ground_truth,
                     analysis_result=analysis_result,
@@ -479,7 +467,6 @@ class Evaluator:
                 two_agent_result.contract_results.append(two_agent_eval)
                 two_agent_result.successful_analyses += 1
 
-                # Baseline: attacker's initial claims accepted as-is (no debate filtering)
                 baseline_analysis = {
                     "claim_results": [
                         {

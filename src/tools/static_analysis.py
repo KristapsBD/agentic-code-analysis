@@ -244,7 +244,7 @@ class StaticAnalysisResult:
 
 def is_slither_available() -> bool:
     try:
-        import slither  # noqa: F401
+        import slither
         return True
     except ImportError:
         return False
