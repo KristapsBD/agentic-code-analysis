@@ -1,8 +1,3 @@
-"""
-Benchmark comparison script.
-Usage: python analyze_results.py [result_file1] [result_file2] ...
-If no files given, uses the two most recent benchmark files.
-"""
 import json
 import os
 import sys
@@ -129,7 +124,6 @@ def print_run(label, run_data):
 
 
 def print_comparison(runs):
-    """Print a cross-provider comparison table for each agent configuration."""
     configs = ['multi_agent', 'two_agent', 'baseline']
     for cfg in configs:
         lbl = AGENT_LABELS[cfg]

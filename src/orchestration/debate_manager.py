@@ -420,8 +420,6 @@ class DebateManager:
             confidence=ConfidenceLevel(str(verdict_dict.get("confidence", "MEDIUM")).upper()),
             reasoning=verdict_dict.get("reasoning", ""),
             recommendation=verdict_dict.get("recommendation", ""),
-            attacker_score=verdict_dict.get("attacker_score", 0.5),
-            defender_score=verdict_dict.get("defender_score", 0.5),
         )
 
         if self.verbose:

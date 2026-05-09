@@ -63,8 +63,6 @@ class AgentResponse:
 
 
 class BaseAgent(ABC):
-    """History accumulates within a single claim's debate and is cleared between claims."""
-
     def __init__(
         self,
         provider: BaseLLMProvider,
@@ -178,7 +176,6 @@ class BaseAgent(ABC):
 
     @staticmethod
     def _repair_truncated_json(text: str) -> str:
-        """Append the minimum suffix to close unclosed strings/arrays/objects."""
         in_string = False
         escape_next = False
         stack: list[str] = []  # '{' or '[' for each open container
@@ -264,17 +261,6 @@ class BaseAgent(ABC):
         try:
             return ConfidenceLevel(str(value).strip().upper())
         except ValueError:
-            return default
-
-    @staticmethod
-    def _normalize_confidence(value: Any, default: float = 0.5) -> float:
-        """Normalize a numeric score to the [0, 1] range (used for attacker/defender scores)."""
-        try:
-            conf = float(value) if value is not None else default
-            if conf > 1:
-                conf = conf / 100
-            return max(0.0, min(1.0, conf))
-        except (ValueError, TypeError):
             return default
 
     @staticmethod

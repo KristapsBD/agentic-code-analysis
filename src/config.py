@@ -15,7 +15,6 @@ except (PermissionError, FileNotFoundError):
 
 
 def setup_logging(log_level: str = "INFO") -> Optional[Path]:
-    """Configure logging; returns a debug log file path when level is DEBUG."""
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
     fmt = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -54,8 +53,6 @@ _CONFIDENCE_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
 
 class ConfidenceLevel(str, Enum):
-    """Three-tier confidence signal: HIGH (clear evidence), MEDIUM (plausible), LOW (ambiguous)."""
-
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"

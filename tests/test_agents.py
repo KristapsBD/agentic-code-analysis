@@ -105,19 +105,19 @@ class TestJudgeAgent:
         return JudgeAgent(provider)
 
     def test_extract_verdict_valid(self, judge):
-        parsed = {"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": "HIGH", "reasoning": "Confirmed.", "recommendation": "Add guard.", "attacker_score": 0.9, "defender_score": 0.4}
+        parsed = {"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": "HIGH", "reasoning": "Confirmed.", "recommendation": "Add guard."}
         verdict = judge._extract_verdict(parsed, "test-claim")
         assert verdict.is_valid is True
         assert verdict.severity == "high"
         assert verdict.confidence == ConfidenceLevel.HIGH
 
     def test_extract_verdict_not_vulnerable(self, judge):
-        parsed = {"verdict": "NOT_VULNERABLE", "severity": "none", "confidence": "HIGH", "reasoning": "SafeMath used.", "recommendation": "None.", "attacker_score": 0.2, "defender_score": 0.9}
+        parsed = {"verdict": "NOT_VULNERABLE", "severity": "none", "confidence": "HIGH", "reasoning": "SafeMath used.", "recommendation": "None."}
         verdict = judge._extract_verdict(parsed, "test-claim")
         assert verdict.is_valid is False
 
     def test_fallback_parse_verdict_valid(self, judge):
-        response = "VERDICT: VALID_VULNERABILITY\n\nSEVERITY: HIGH\n\nREASONING: Confirmed.\n\nRECOMMENDATION: Add guard.\n\nCONFIDENCE: HIGH\n\nATTACKER_SCORE: 0.9\nDEFENDER_SCORE: 0.4"
+        response = "VERDICT: VALID_VULNERABILITY\n\nSEVERITY: HIGH\n\nREASONING: Confirmed.\n\nRECOMMENDATION: Add guard.\n\nCONFIDENCE: HIGH"
         verdict = judge._fallback_parse_verdict(response, "test-claim")
         assert verdict.is_valid is True
         assert verdict.severity == "high"
@@ -217,8 +217,7 @@ class TestWebSearchPipeline:
     async def test_judge_passes_web_search_to_provider(self):
         provider = self._make_provider(
             '{"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": "HIGH", '
-            '"reasoning": "Confirmed.", "recommendation": "Fix it.", '
-            '"attacker_score": 0.8, "defender_score": 0.3}'
+            '"reasoning": "Confirmed.", "recommendation": "Fix it."}'
         )
         claim = VulnerabilityClaim(
             id="c1", vulnerability_type="Reentrancy", severity="high",
@@ -292,8 +291,6 @@ class TestVerdict:
             confidence=ConfidenceLevel.HIGH,
             reasoning="Test",
             recommendation="Fix",
-            attacker_score=0.9,
-            defender_score=0.2,
         )
         result = verdict.to_dict()
         assert result["is_valid"] is True

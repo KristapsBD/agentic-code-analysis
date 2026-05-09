@@ -53,8 +53,6 @@ class TestDebateResult:
             confidence=ConfidenceLevel.HIGH,
             reasoning="Test",
             recommendation="Fix",
-            attacker_score=0.8,
-            defender_score=0.3,
         )
         result = DebateResult(
             contract_path="test.sol",
@@ -143,7 +141,7 @@ class TestClaimResult:
         )
         verdict = Verdict(
             claim_id="test-1", is_valid=True, severity="high", confidence=ConfidenceLevel.HIGH,
-            reasoning="Test", recommendation="Fix", attacker_score=0.8, defender_score=0.3,
+            reasoning="Test", recommendation="Fix",
         )
         return claim, verdict
 

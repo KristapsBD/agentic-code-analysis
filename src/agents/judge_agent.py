@@ -23,9 +23,6 @@ class Verdict:
     confidence: ConfidenceLevel
     reasoning: str
     recommendation: str
-    attacker_score: float
-    defender_score: float
-
     def to_dict(self) -> dict:
         return {
             "claim_id": self.claim_id,
@@ -34,8 +31,6 @@ class Verdict:
             "confidence": self.confidence.value,
             "reasoning": self.reasoning,
             "recommendation": self.recommendation,
-            "attacker_score": self.attacker_score,
-            "defender_score": self.defender_score,
         }
 
 
@@ -165,8 +160,6 @@ class JudgeAgent(BaseAgent):
             severity = severity.lower()
 
         confidence = self._parse_confidence_level(parsed.get("confidence"))
-        attacker_score = self._normalize_confidence(parsed.get("attacker_score"))
-        defender_score = self._normalize_confidence(parsed.get("defender_score"))
 
         return Verdict(
             claim_id=claim_id,
@@ -175,8 +168,6 @@ class JudgeAgent(BaseAgent):
             confidence=confidence,
             reasoning=str(parsed.get("reasoning", "No detailed reasoning provided")),
             recommendation=str(parsed.get("recommendation", "Review and address as needed")),
-            attacker_score=attacker_score,
-            defender_score=defender_score,
         )
 
     def _fallback_parse_verdict(self, raw_content: str, claim_id: str) -> Verdict:
@@ -215,7 +206,7 @@ class JudgeAgent(BaseAgent):
 
         reasoning = ""
         reasoning_match = re.search(
-            r"REASONING[:\s]*(.+?)(?=RECOMMENDATION|SEVERITY|CONFIDENCE|ATTACKER_SCORE|$)",
+            r"REASONING[:\s]*(.+?)(?=RECOMMENDATION|SEVERITY|CONFIDENCE|$)",
             raw_content,
             re.IGNORECASE | re.DOTALL
         )
@@ -228,18 +219,12 @@ class JudgeAgent(BaseAgent):
 
         recommendation = ""
         rec_match = re.search(
-            r"RECOMMENDATION[:\s]*(.+?)(?=SEVERITY|CONFIDENCE|ATTACKER_SCORE|$)",
+            r"RECOMMENDATION[:\s]*(.+?)(?=SEVERITY|CONFIDENCE|$)",
             raw_content,
             re.IGNORECASE | re.DOTALL
         )
         if rec_match:
             recommendation = rec_match.group(1).strip()
-
-        attacker_match = re.search(r"ATTACKER_SCORE[:\s]*([0-9.]+)", raw_content, re.IGNORECASE)
-        attacker_score = self._normalize_confidence(attacker_match.group(1) if attacker_match else None)
-
-        defender_match = re.search(r"DEFENDER_SCORE[:\s]*([0-9.]+)", raw_content, re.IGNORECASE)
-        defender_score = self._normalize_confidence(defender_match.group(1) if defender_match else None)
 
         return Verdict(
             claim_id=claim_id,
@@ -248,6 +233,4 @@ class JudgeAgent(BaseAgent):
             confidence=confidence,
             reasoning=reasoning if reasoning else "No detailed reasoning provided",
             recommendation=recommendation if recommendation else "Review and address as needed",
-            attacker_score=attacker_score,
-            defender_score=defender_score,
         )

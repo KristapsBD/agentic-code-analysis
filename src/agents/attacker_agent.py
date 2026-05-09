@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 
 
 class AttackerAgent(BaseAgent):
-    """Scans for vulnerabilities, prioritizing sensitivity over specificity."""
-
     def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
         super().__init__(
             provider=provider,
@@ -149,7 +147,6 @@ class AttackerAgent(BaseAgent):
         return claims
 
     def _dict_to_claim(self, data: dict[str, Any]) -> VulnerabilityClaim | None:
-        """Convert a dict to a VulnerabilityClaim, returning None on failure."""
         try:
             return VulnerabilityClaim(
                 id=data.get("id", str(uuid.uuid4())[:8]),
@@ -164,7 +161,6 @@ class AttackerAgent(BaseAgent):
             return None
 
     def _fallback_parse_claims(self, raw_content: str) -> list[dict[str, Any]]:
-        """Extract vulnerability dicts from unstructured text when JSON parsing fails."""
         claims: list[dict[str, Any]] = []
         current_claim: dict[str, Any] = {}
 
