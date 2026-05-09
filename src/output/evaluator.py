@@ -1,5 +1,3 @@
-"""Evaluation module for benchmarking the adversarial agent system."""
-
 import asyncio
 import json
 from dataclasses import dataclass, field
@@ -64,12 +62,10 @@ class EvaluationResult:
 
     @property
     def binary_predicted_vulnerable(self) -> bool:
-        """True if the system predicted at least one vulnerability."""
         return len(self.predicted_vulnerabilities) > 0
 
     @property
     def binary_correct(self) -> bool:
-        """True if binary vulnerable/clean prediction matches ground truth."""
         if self.error:
             return False
         return self.binary_predicted_vulnerable == self.ground_truth.has_vulnerabilities
@@ -155,13 +151,6 @@ class BenchmarkResult:
 
     @property
     def binary_accuracy(self) -> float:
-        """
-        Contract-level binary classification accuracy.
-
-        For each contract: did the system correctly predict "vulnerable" vs "clean"?
-        A system predicts "vulnerable" if it found at least one valid vulnerability.
-        Contracts that failed analysis (error is set) are counted as incorrect.
-        """
         if not self.contract_results:
             return 0.0
         correct = sum(1 for r in self.contract_results if r.binary_correct)
@@ -286,13 +275,6 @@ class BenchmarkResult:
 
 
 class Evaluator:
-    """
-    Evaluates the adversarial agent system against benchmark datasets.
-
-    Supports various benchmark formats including SmartBugs.
-    """
-
-    # Mapping of vulnerability type variations to canonical names.
     # Canonical keys must match VULNERABILITY_TYPES in src/knowledge/prompts/attacker.py.
     VULNERABILITY_TYPE_MAP = {
         "reentrancy": ["reentrancy", "re-entrancy", "reentrant"],
@@ -422,10 +404,6 @@ class Evaluator:
         trace_dir: Optional[Path] = None,
         inter_contract_delay: float = 0.0,
     ) -> tuple[BenchmarkResult, BenchmarkResult, BenchmarkResult]:
-        """
-        Single-pass evaluation: runs the full debate once per contract, then derives
-        multi-agent, 2-agent, and baseline results from the same data — no extra API calls.
-        """
         model = settings.get_model_for_provider(self.provider)
 
         multi_result = BenchmarkResult(
@@ -553,15 +531,6 @@ class Evaluator:
         analysis_result: dict,
         analysis_time: float,
     ) -> EvaluationResult:
-        """
-        Compare 2-agent (attacker + defender, no judge) results with ground truth.
-
-        A claim counts as "predicted" by the 2-agent system if the attacker did NOT
-        explicitly concede after seeing the defender's arguments. This implements the
-        "attacker wins ties" rule: the claim stands unless retracted.
-
-        Severity is taken from the attacker's original claim.
-        """
         predicted = []
         for claim_result in analysis_result.get("claim_results", []):
             # Claim passes if defender did not explicitly reject it (INVALID_CLAIM).
@@ -602,7 +571,6 @@ class Evaluator:
         baseline: BenchmarkResult,
         console: Optional[Console] = None,
     ) -> None:
-        """Print a side-by-side comparison: 3-agent vs 2-agent vs baseline."""
         console = console or Console()
 
         table = Table(
@@ -679,10 +647,8 @@ class Evaluator:
         console.print(table)
 
     def print_results(self, result: BenchmarkResult, console: Optional[Console] = None) -> None:
-        """Print evaluation results to console."""
         console = console or Console()
 
-        # Summary table
         summary = Table(title="Benchmark Results", show_header=True, header_style="bold magenta")
         summary.add_column("Metric", style="cyan")
         summary.add_column("Value", justify="right")

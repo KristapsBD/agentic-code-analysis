@@ -1,5 +1,3 @@
-"""Judge Agent — evaluates Attacker/Defender arguments and renders verdicts."""
-
 import logging
 import re
 from dataclasses import dataclass
@@ -25,8 +23,8 @@ class Verdict:
     confidence: ConfidenceLevel
     reasoning: str
     recommendation: str
-    attacker_score: float  # How convincing was the Attacker (0-1)
-    defender_score: float  # How convincing was the Defender (0-1)
+    attacker_score: float
+    defender_score: float
 
     def to_dict(self) -> dict:
         return {
@@ -42,8 +40,6 @@ class Verdict:
 
 
 class JudgeAgent(BaseAgent):
-    """Impartial arbiter that evaluates Attacker/Defender arguments and renders verdicts."""
-
     def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
         super().__init__(
             provider=provider,
@@ -54,7 +50,6 @@ class JudgeAgent(BaseAgent):
         )
 
     async def analyze(self, context: dict) -> AgentResponse:
-        """Render an initial verdict; sets needs_clarification if confidence is low."""
         contract_code = context.get("contract_code", "")
         claim = context.get("claim")
         attacker_arg = context.get("attacker_argument", "")
@@ -63,7 +58,6 @@ class JudgeAgent(BaseAgent):
 
         claim_dict = self._to_claim_dict(claim)
 
-        # Format debate history if available
         debate_summary = ""
         if debate_history:
             debate_summary = "\n\nDEBATE HISTORY:\n"
@@ -107,7 +101,6 @@ class JudgeAgent(BaseAgent):
         )
 
     async def render_final_verdict(self, context: dict) -> AgentResponse:
-        """Render a final verdict after receiving clarification from both sides."""
         contract_code = context.get("contract_code", "")
         claim = context.get("claim", {})
         original_question = context.get("original_question", "")

@@ -1,7 +1,3 @@
-"""Prompt templates for the Attacker Agent."""
-
-# Canonical vulnerability type labels used across the system.
-# The attacker prompt, evaluator, and report all reference this set.
 VULNERABILITY_TYPES = [
     "reentrancy",
     "access_control",

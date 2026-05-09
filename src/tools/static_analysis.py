@@ -1,5 +1,3 @@
-"""Static analysis via the Slither Python API (not CLI); Solidity-only, non-.sol files are silently skipped."""
-
 import logging
 import re
 import shutil

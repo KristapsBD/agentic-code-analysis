@@ -1,5 +1,3 @@
-"""Abstract base class defining the interface for all LLM providers."""
-
 import asyncio
 import logging
 from abc import ABC, abstractmethod
@@ -27,7 +25,7 @@ class LLMResponse:
 
 @dataclass
 class Message:
-    role: str  # "system", "user", or "assistant"
+    role: str
     content: str
 
     def to_dict(self) -> dict:

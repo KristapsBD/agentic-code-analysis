@@ -1,5 +1,3 @@
-"""Report generation from vulnerability analysis results (console, JSON, Markdown)."""
-
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -93,8 +91,6 @@ class Report:
 
 
 class ReportGenerator:
-    """Generates formatted reports from analysis results."""
-
     SEVERITY_COLORS = {
         "critical": "red bold",
         "high": "red",
@@ -112,7 +108,6 @@ class ReportGenerator:
     }
 
     def generate(self, result: dict, contract_path: str) -> Report:
-        """Build a Report from a raw analysis result dict."""
         findings = []
 
         for claim_result in result.get("claim_results", []):
@@ -146,7 +141,6 @@ class ReportGenerator:
         )
 
     def print_to_console(self, report: Report, console: Optional[Console] = None) -> None:
-        """Print the report to the console with rich formatting."""
         console = console or Console()
 
         summary_text = (

@@ -1,5 +1,3 @@
-"""Abstract base class for all agents in the system."""
-
 import json
 import logging
 import re
@@ -24,10 +22,10 @@ class AgentRole(str, Enum):
 class VulnerabilityClaim:
     id: str
     vulnerability_type: str
-    severity: str  # "critical", "high", "medium", "low", "info"
-    location: str  # Function name, line number, or code snippet
+    severity: str
+    location: str
     description: str
-    evidence: str  # Code snippet or reasoning
+    evidence: str
     confidence: ConfidenceLevel
 
     def to_dict(self) -> dict:
@@ -81,7 +79,7 @@ class BaseAgent(ABC):
         self.system_prompt = system_prompt
         self.web_search = web_search
         self.conversation_history: list[Message] = []
-        self._last_llm_response: Any = None  # holds the most recent LLMResponse for diagnostics
+        self._last_llm_response: Any = None
 
     @abstractmethod
     async def analyze(self, context: dict) -> AgentResponse:

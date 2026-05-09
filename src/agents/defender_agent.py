@@ -1,5 +1,3 @@
-"""Defender Agent — reviews vulnerability claims and provides counter-arguments."""
-
 import logging
 from typing import Any
 
@@ -17,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 
 class DefenderAgent(BaseAgent):
-    """Critically examines vulnerability claims, looking for mitigations and context that invalidates them."""
-
     def __init__(self, provider: BaseLLMProvider, web_search: bool = False):
         super().__init__(
             provider=provider,
@@ -66,7 +62,6 @@ class DefenderAgent(BaseAgent):
         )
 
     async def respond_to_rebuttal(self, context: dict) -> AgentResponse:
-        """Respond to the Attacker's rebuttal with an updated defense or concession."""
         claim = context.get("original_claim", {})
         original_defense = context.get("original_defense", "")
         rebuttal = context.get("rebuttal", "")

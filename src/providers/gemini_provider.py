@@ -1,5 +1,3 @@
-"""Google Gemini LLM provider using the google-genai SDK with Google Search grounding support."""
-
 import asyncio
 import logging
 from typing import Any, Optional
@@ -15,8 +13,6 @@ _SEP = "─" * 60
 
 
 class GeminiProvider(BaseLLMProvider):
-    """Google Gemini provider with proper multi-turn Content/Part message handling."""
-
     def __init__(
         self,
         api_key: str,

@@ -1,5 +1,3 @@
-"""OpenAI LLM provider; automatically switches to a search-capable model when web_search=True."""
-
 import logging
 from typing import Optional
 
@@ -15,8 +13,6 @@ _DEFAULT_SEARCH_MODEL = "gpt-4o-search-preview"
 
 
 class OpenAIProvider(BaseLLMProvider):
-    """OpenAI LLM provider (GPT-4o, GPT-4-turbo, etc.)."""
-
     def __init__(
         self,
         api_key: str,

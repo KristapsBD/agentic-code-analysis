@@ -1,5 +1,3 @@
-"""Attacker Agent — aggressively scans smart contracts for potential vulnerabilities."""
-
 import json
 import logging
 import uuid
@@ -66,7 +64,6 @@ class AttackerAgent(BaseAgent):
         )
 
     async def respond_to_defense(self, context: dict) -> AgentResponse:
-        """Respond to the Defender's arguments with a rebuttal or concession."""
         claim = context.get("original_claim", {})
         defense = context.get("defense_argument", "")
 

@@ -1,5 +1,3 @@
-"""Factory for creating LLM provider instances."""
-
 from typing import Optional
 
 from src.config import LLMProvider, settings
@@ -10,8 +8,6 @@ from src.providers.openai_provider import OpenAIProvider
 
 
 class ProviderFactory:
-    """Factory class for creating LLM provider instances."""
-
     @staticmethod
     def create(
         provider: Optional[LLMProvider] = None,

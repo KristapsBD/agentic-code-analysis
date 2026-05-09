@@ -1,5 +1,3 @@
-"""Configuration management for the Adversarial Agent System."""
-
 import logging
 from datetime import datetime
 from enum import Enum
@@ -76,14 +74,10 @@ class ConfidenceLevel(str, Enum):
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-
-    # API Keys
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
     gemini_api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
 
-    # Default Provider Configuration
     default_provider: LLMProvider = Field(
         default=LLMProvider.OPENAI, alias="DEFAULT_PROVIDER"
     )
@@ -97,12 +91,8 @@ class Settings(BaseSettings):
         default="gemini-2.0-flash-exp", alias="DEFAULT_MODEL_GEMINI"
     )
 
-    # Debate Configuration
     default_debate_rounds: int = Field(default=2, alias="DEFAULT_DEBATE_ROUNDS", ge=1, le=5)
 
-    # Temperature Configuration
-    # Each value targets a specific role/phase in the pipeline.
-    # Higher values increase output diversity; lower values improve consistency.
     temp_attacker_scan: float = Field(
         default=0.4, alias="TEMP_ATTACKER_SCAN", ge=0.0, le=2.0
     )
@@ -120,10 +110,8 @@ class Settings(BaseSettings):
         default=ConfidenceLevel.LOW, alias="JUDGE_CLARIFICATION_TRIGGER"
     )
 
-    # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
-    # Paths
     data_dir: Path = Field(default=Path("data"))
     results_dir: Path = Field(default=Path("data/results"))
     benchmarks_dir: Path = Field(default=Path("data/benchmarks"))

@@ -1,5 +1,3 @@
-"""Anthropic LLM provider using web_search_20260209 for server-side web search."""
-
 import logging
 from typing import Optional
 

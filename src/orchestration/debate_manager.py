@@ -1,20 +1,3 @@
-"""
-Debate Manager for orchestrating agent interactions.
-
-Coordinates the Attacker, Defender, and Judge agents through
-structured debate rounds to analyze smart contracts.
-
-Pipeline flow:
-1. Attacker scans contract -> generates vulnerability claims
-2. For each claim:
-   a. Defender reviews claim
-   b. N rounds of Attacker rebuttal <-> Defender response (with convergence-based early exit)
-   c. Judge renders initial assessment
-   d. If Judge confidence < threshold -> single clarification round from both sides
-   e. Judge renders final verdict
-3. Compile report
-"""
-
 import asyncio
 import logging
 import re
@@ -52,7 +35,6 @@ _LANGUAGE_PATTERNS: dict[str, list[str]] = {
 
 
 def _detect_language(source_code: str, file_path: str = "") -> str:
-    """Detect smart contract language from file extension or content patterns."""
     for ext, lang in _EXTENSION_MAP.items():
         if file_path.lower().endswith(ext):
             return lang
@@ -543,5 +525,4 @@ class DebateManager:
         self.judge.clear_history()
 
     def reset_agents(self) -> None:
-        """Clear agent conversation histories (public API)."""
         self._reset_claim_context()

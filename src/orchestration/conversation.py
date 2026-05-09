@@ -1,5 +1,3 @@
-"""Conversation state management for agent debates."""
-
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -37,8 +35,6 @@ class ConversationTurn:
 
 
 class Conversation:
-    """Manages the conversation state for a vulnerability analysis session."""
-
     def __init__(self, contract_path: str):
         self.contract_path = contract_path
         self.turns: list[ConversationTurn] = []

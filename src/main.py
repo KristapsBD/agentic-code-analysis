@@ -1,5 +1,3 @@
-"""CLI entry point for the Adversarial Agent System."""
-
 import asyncio
 import json
 import logging
@@ -29,17 +27,6 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
-
-
-def print_banner() -> None:
-    banner = """
-╔═══════════════════════════════════════════════════════════════╗
-║     Smart Contract Analyzer - Adversarial Agent System        ║
-║         Multi-Agent LLM Vulnerability Detection               ║
-╚═══════════════════════════════════════════════════════════════╝
-    """
-    console.print(Panel(banner, style="bold blue"))
-
 
 @app.command()
 def analyze(
@@ -97,14 +84,6 @@ def analyze(
         ),
     ),
 ) -> None:
-    """
-    Analyze a smart contract for vulnerabilities using adversarial debate.
-
-    The system uses three agents (Attacker, Defender, Judge) to identify
-    and verify potential security issues in the contract.
-    """
-    print_banner()
-
     try:
         settings.validate_provider_config(provider)
     except ValueError as e:
@@ -155,7 +134,7 @@ def analyze(
     transcript_path.write_text(json.dumps(result, indent=2, default=str))
     logger.info(f"Transcript saved to: {transcript_path}")
 
-    console.print(f"\n[green]✓ Reports saved:[/green]")
+    console.print(f"\n[green]Reports saved:[/green]")
     console.print(f"  JSON:       {json_path}")
     console.print(f"  Markdown:   {md_path}")
     console.print(f"  Transcript: {transcript_path}")
@@ -246,14 +225,6 @@ def benchmark(
         min=0.0,
     ),
 ) -> None:
-    """
-    Compare multi-agent pipeline vs. single-prompt baseline on a benchmark dataset.
-
-    Runs both approaches on all contracts in the benchmark directory and
-    prints a side-by-side precision/recall/F1 comparison.
-    """
-    print_banner()
-
     try:
         settings.validate_provider_config(provider)
     except ValueError as e:
@@ -277,10 +248,6 @@ def benchmark(
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     trace_dir = Path(f"data/results/transcripts/benchmark_{timestamp}")
 
-    # Single pass — all three architectures derived from the same LLM run:
-    #   3-agent:  Attacker → Defender → Judge (judge-confirmed claims)
-    #   2-agent:  Attacker + Defender only (claims attacker did not concede)
-    #   baseline: Attacker's raw initial claims, all accepted as-is
     with console.status("[bold green]Attacker → Defender → Judge debate in progress..."):
         multi_result, two_agent_result, baseline_result = asyncio.run(
             evaluator.evaluate_both(
@@ -317,9 +284,6 @@ def benchmark(
 
 @app.command()
 def info() -> None:
-    """Display system configuration and status."""
-    print_banner()
-
     table = Table(title="Configuration", show_header=True, header_style="bold magenta")
     table.add_column("Setting", style="cyan")
     table.add_column("Value", style="green")
@@ -336,10 +300,9 @@ def info() -> None:
     table.add_row("Judge Clarification Trigger", settings.judge_clarification_trigger.value)
     table.add_row("Log Level", settings.log_level)
 
-    # API Key status
-    openai_status = "✓ Configured" if settings.openai_api_key else "✗ Not Set"
-    anthropic_status = "✓ Configured" if settings.anthropic_api_key else "✗ Not Set"
-    gemini_status = "✓ Configured" if settings.gemini_api_key else "✗ Not Set"
+    openai_status = "Configured" if settings.openai_api_key else "Not Set"
+    anthropic_status = "Configured" if settings.anthropic_api_key else "Not Set"
+    gemini_status = "Configured" if settings.gemini_api_key else "Not Set"
     table.add_row("OpenAI API Key", openai_status)
     table.add_row("Anthropic API Key", anthropic_status)
     table.add_row("Gemini API Key", gemini_status)
