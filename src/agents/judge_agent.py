@@ -138,7 +138,6 @@ class JudgeAgent(BaseAgent):
         )
 
     def _extract_verdict(self, parsed: dict[str, Any], claim_id: str) -> Verdict:
-        """Extract a Verdict from a parsed LLM response, falling back to raw text parsing."""
         if parsed.get("_parse_failed"):
             return self._fallback_parse_verdict(parsed.get("raw_content", ""), claim_id)
 
@@ -171,7 +170,6 @@ class JudgeAgent(BaseAgent):
         )
 
     def _fallback_parse_verdict(self, raw_content: str, claim_id: str) -> Verdict:
-        """Best-effort verdict extraction from unstructured text when JSON parsing fails."""
         response_upper = raw_content.upper()
 
         is_valid = False

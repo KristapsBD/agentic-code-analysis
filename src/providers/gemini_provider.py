@@ -35,7 +35,6 @@ class GeminiProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """Send messages to Gemini; web_search is disabled when json_mode=True."""
         self._validate_messages(messages)
 
         system_instruction, contents = self._build_contents(messages)
@@ -131,7 +130,6 @@ class GeminiProvider(BaseLLMProvider):
         contents: list[types.Content],
         config: types.GenerateContentConfig,
     ) -> Any:
-        """Async API call with rate-limit retry; falls back to sync executor if async is unavailable."""
         async def _attempt() -> Any:
             try:
                 return await self.client.aio.models.generate_content(
@@ -159,7 +157,6 @@ class GeminiProvider(BaseLLMProvider):
     def _build_contents(
         messages: list[Message],
     ) -> tuple[Optional[str], list[types.Content]]:
-        """Convert Messages to Gemini Content objects, extracting the system prompt separately."""
         system_instruction: Optional[str] = None
         contents: list[types.Content] = []
 
@@ -181,7 +178,6 @@ class GeminiProvider(BaseLLMProvider):
 
     @staticmethod
     def _extract_text(response: Any) -> str:
-        """Extract plain text from a Gemini GenerateContentResponse."""
         if not response.candidates:
             return ""
         return "".join(

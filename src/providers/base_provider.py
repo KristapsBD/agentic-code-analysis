@@ -33,8 +33,6 @@ class Message:
 
 
 class BaseLLMProvider(ABC):
-    """Base class for LLM providers; subclasses must implement complete()."""
-
     def __init__(
         self,
         api_key: str,
@@ -68,7 +66,6 @@ class BaseLLMProvider(ABC):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> str:
-        """Simple single-turn completion."""
         messages = []
         if system_prompt:
             messages.append(Message(role="system", content=system_prompt))
@@ -80,7 +77,6 @@ class BaseLLMProvider(ABC):
 
     @staticmethod
     def _is_rate_limit_error(exc: Exception) -> bool:
-        """Detect 429 / quota-exceeded errors across all SDK types."""
         msg = str(exc).lower()
         return (
             "429" in str(exc)
@@ -98,12 +94,6 @@ class BaseLLMProvider(ABC):
         base_delay: float = 30.0,
         max_delay: float = 120.0,
     ) -> Any:
-        """
-        Execute an async API call with exponential backoff on rate-limit errors.
-
-        Delays: 30s → 60s → 120s (capped at max_delay).
-        Non-rate-limit errors are re-raised immediately without retry.
-        """
         for attempt in range(max_retries):
             try:
                 return await call_fn()

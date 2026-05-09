@@ -38,7 +38,6 @@ class ProviderFactory:
     def create_all_configured(
         temperature: Optional[float] = None,
     ) -> dict[str, BaseLLMProvider]:
-        """Return a dict of provider name → instance for all providers with API keys set."""
         providers = {}
 
         for provider in LLMProvider:

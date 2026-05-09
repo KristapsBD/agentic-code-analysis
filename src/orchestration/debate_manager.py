@@ -508,7 +508,6 @@ class DebateManager:
     def _has_converged(
         attacker_confidence: ConfidenceLevel, defender_confidence: ConfidenceLevel
     ) -> bool:
-        """Return True when attacker confidence is LOW or defender confidence is HIGH."""
         if attacker_confidence == ConfidenceLevel.LOW:
             return True
         if defender_confidence == ConfidenceLevel.HIGH:
@@ -516,7 +515,6 @@ class DebateManager:
         return False
 
     def _reset_claim_context(self) -> None:
-        """Clear agent histories between claims to prevent context bleed."""
         logger.debug("Resetting agent histories for new claim")
         self.attacker.clear_history()
         self.defender.clear_history()

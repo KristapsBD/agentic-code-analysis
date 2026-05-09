@@ -67,7 +67,6 @@ _NO_PRAGMA_FALLBACK = "0.4.26"
 
 
 def _pragma_to_specifier(pragma_str: str) -> SpecifierSet:
-    """Convert a raw `pragma solidity` expression into a packaging SpecifierSet."""
     parts: list[str] = []
     for token in pragma_str.strip().split():
         token = token.strip()
@@ -121,7 +120,6 @@ def _pragma_to_specifier(pragma_str: str) -> SpecifierSet:
 
 
 def _find_best_version(spec: SpecifierSet) -> Optional[str]:
-    """Return the highest version in _KNOWN_VERSIONS that satisfies spec, or None."""
     for ver_str in _KNOWN_VERSIONS:
         if Version(ver_str) in spec:
             return ver_str
@@ -129,7 +127,6 @@ def _find_best_version(spec: SpecifierSet) -> Optional[str]:
 
 
 def _resolve_solc_version(source_code: str) -> Optional[str]:
-    """Determine the solc version required by the contract's pragma; returns None if no match found."""
     pragma_match = re.search(r'pragma\s+solidity\s+([^;]+);', source_code)
 
     if pragma_match:
@@ -148,7 +145,6 @@ def _resolve_solc_version(source_code: str) -> Optional[str]:
 
 
 def _activate_solc(version: str) -> bool:
-    """Install (if needed) and activate a solc version via solc-select."""
     if shutil.which("solc-select") is None:
         logger.warning("solc-select not found — cannot switch compiler version")
         return False
@@ -214,7 +210,6 @@ class StaticAnalysisResult:
         return not self.skipped and self.error is None
 
     def format_for_prompt(self) -> str:
-        """Return a compact string suitable for injection into an agent prompt."""
         if self.skipped:
             return ""
         if self.error:

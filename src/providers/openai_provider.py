@@ -33,7 +33,6 @@ class OpenAIProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """Send messages to OpenAI; json_mode is ignored when web_search=True."""
         self._validate_messages(messages)
 
         openai_messages = [msg.to_dict() for msg in messages]

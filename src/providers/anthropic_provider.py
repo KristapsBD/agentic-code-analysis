@@ -7,15 +7,12 @@ from src.providers.base_provider import BaseLLMProvider, LLMResponse, Message
 
 logger = logging.getLogger(__name__)
 
-# "name" field is required; type string pins the tool version.
 _WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 
-# max_tokens is required by the Anthropic API; 8192 gives headroom without triggering streaming.
 _ANTHROPIC_MAX_TOKENS = 8192
 
 
 class AnthropicProvider(BaseLLMProvider):
-    """Anthropic provider; only claude-sonnet-4-6+ supports web_search=True."""
 
     def __init__(
         self,
@@ -37,7 +34,6 @@ class AnthropicProvider(BaseLLMProvider):
         web_search: bool = False,
         json_mode: bool = False,
     ) -> LLMResponse:
-        """Send messages to Anthropic; json_mode is a no-op (JSON enforced via prompt)."""
         self._validate_messages(messages)
 
         system_prompt = None

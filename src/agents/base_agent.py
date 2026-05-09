@@ -208,7 +208,6 @@ class BaseAgent(ABC):
 
     @staticmethod
     def _parse_json_response(response: str) -> dict[str, Any]:
-        """Parse a JSON response: direct → markdown extraction → brace extraction → truncation repair."""
         try:
             result = json.loads(response.strip())
             logger.debug("JSON parse strategy: direct parse succeeded")
