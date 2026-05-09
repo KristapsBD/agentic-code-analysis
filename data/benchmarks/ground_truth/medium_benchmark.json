@@ -2,7 +2,7 @@
   {"contract_path": "0xf6dbe88ba55f1793ff0773c9b1275300f830914f.sol",     "vulnerabilities": [{"type": "reentrancy"}]},
   {"contract_path": "DAO.sol",                     "vulnerabilities": [{"type": "reentrancy"}]},
   {"contract_path": "0x33813c2f2aab62ac88c234858a1f08448424828f.sol", "vulnerabilities": [{"type": "reentrancy"}]},
-  {"contract_path": "FibonacciBalance.sol",        "vulnerabilities": [{"type": "delegatecall"}]},
+  {"contract_path": "FibonacciBalance.sol",        "vulnerabilities": [{"type": "access_control"}]},
   {"contract_path": "multiowned_vulnerable.sol",   "vulnerabilities": [{"type": "access_control"}]},
   {"contract_path": "parity_wallet_bug_2.sol",     "vulnerabilities": [{"type": "access_control"}]},
   {"contract_path": "BECToken.sol",                "vulnerabilities": [{"type": "arithmetic"}]},
