@@ -4,14 +4,34 @@ A multi agent LLM system that uses agent debate to detect vulnerabilities in blo
 
 ## Installation
 
+### Windows (PowerShell / CMD)
+
 ```bash
 git clone <repository-url>
 cd agentic-analysis
 
 python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+venv\Scripts\activate
 
 pip install -e .
+```
+
+### WSL / Linux / macOS
+
+```bash
+git clone <repository-url>
+cd agentic-analysis
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -e .
+```
+
+### Running from WSL when venv was created on Windows
+
+```bash
+venv/Scripts/python.exe -m src.main <command>
 ```
 
 ## Configuration
