@@ -21,17 +21,18 @@ KEY TECHNICAL FACTS — apply these unconditionally:
 - A fallback function that does address.delegatecall(msg.data) is a delegatecall storage-collision vulnerability (type: delegatecall), not access_control.
 - Variable shadowing: if a derived contract re-declares a base contract's state variable, they occupy different storage slots. An init function that sets the derived slot does not bypass a modifier checking the base slot.
 
-INVESTIGATION CHECKLIST — evaluate these types in order before selecting your primary finding:
+INVESTIGATION CHECKLIST — evaluate all of these before selecting your primary finding:
 1. reentrancy: is there a .call{value}() or token interface call that executes before state is fully updated?
 2. access_control: can an unauthorized caller invoke a state-changing function to seize ownership or bypass auth? (include misnamed constructors in Solidity < 0.5, and unprotected initX() on library contracts used via delegatecall)
 3. unchecked_calls: is any send(), call(), or low-level call's boolean return value never read?
 4. denial_of_service: is there an unbounded loop over a user-controlled array, a push-payment pattern where a failing recipient blocks all future payouts, or a storage array that is cleared by reassignment (`array = new T[](0)` in Solidity 0.4) after growing unboundedly — such reassignments zero every slot in storage and will OOG once the array is large enough?
-5. arithmetic: only if (1)–(4) are all absent
+5. arithmetic: are there unprotected overflow/underflow operations (pre-0.8 without SafeMath, or inside an unchecked{} block in 0.8+)?
+6. other: does the contract use any gated pattern — delegatecall storage collision, on-chain randomness (block.timestamp/blockhash), ecrecover/EIP-712 signature replay, or upgradeable proxy — with an exploitable flaw?
 
 REPORTING RULES:
 - Report ONE finding — the most directly exploitable vulnerability from the checklist.
-- If any type from (1)–(4) is found, report that. Do not report a gated type (bad_randomness, time_manipulation, signature_replay, upgradeable_proxy) instead.
-- When multiple types from (1)–(4) are found: prefer access_control over reentrancy if the access_control finding lets any caller seize full contract ownership with no preconditions; prefer denial_of_service over unchecked_calls when the DoS comes from (a) a push-payment blocking pattern where a failing recipient prevents execution from continuing, OR (b) an unbounded storage operation (array clear via reassignment or unbounded iteration) that can OOG. Prefer unchecked_calls over denial_of_service ONLY when the DoS requires a numeric type overflow in a loop counter (e.g., uint8 counter iterating 256+ entries) — this is a setup-dependent precondition that makes unchecked external calls the more immediately exploitable finding.
+- If any type from (1)–(5) is found, report that. Do not report a gated type (bad_randomness, time_manipulation, signature_replay, upgradeable_proxy) instead.
+- When multiple types from (1)–(5) are found: prefer access_control over reentrancy if the access_control finding lets any caller seize full contract ownership with no preconditions; prefer denial_of_service over unchecked_calls when the DoS comes from (a) a push-payment blocking pattern where a failing recipient prevents execution from continuing, OR (b) an unbounded storage operation (array clear via reassignment or unbounded iteration) that can OOG. Prefer unchecked_calls over denial_of_service ONLY when the DoS requires a numeric type overflow in a loop counter (e.g., uint8 counter iterating 256+ entries) — this is a setup-dependent precondition that makes unchecked external calls the more immediately exploitable finding.
 - Gated types: only report if the contract explicitly uses the named pattern (on-chain randomness source, ecrecover/EIP-712, proxy pattern, block.timestamp-dependent outcome).
 - Minimum confidence: MEDIUM. A pattern without a clear attacker action is not a finding."""
 
@@ -46,8 +47,10 @@ STEP 1 — Complete the investigation field. For each type, write "FOUND - <what
 - access_control
 - unchecked_calls
 - denial_of_service
+- arithmetic
+- other (name the specific type if found, e.g. "FOUND delegatecall - ...")
 
-STEP 2 — Report your single primary finding. Pick the most impactful FOUND type from step 1. If all four are NOT PRESENT, check arithmetic (pre-0.8 unprotected operations). Report nothing if no genuine exploit path exists.
+STEP 2 — Report your single primary finding. Apply the priority rules from REPORTING RULES to pick the most impactful FOUND type from step 1. Report nothing if no genuine exploit path exists.
 
 CANONICAL TYPE LABELS (use exactly one): {vulnerability_types}
 
@@ -58,7 +61,9 @@ Respond with ONLY this JSON:
     "reentrancy": "FOUND - withdraw() calls msg.sender.call before zeroing balance[msg.sender]",
     "access_control": "NOT PRESENT - all owner functions protected by onlyOwner",
     "unchecked_calls": "NOT PRESENT - only .transfer() used",
-    "denial_of_service": "NOT PRESENT - no loops over user-controlled arrays"
+    "denial_of_service": "NOT PRESENT - no loops over user-controlled arrays",
+    "arithmetic": "NOT PRESENT - Solidity 0.8, no unchecked blocks",
+    "other": "NOT PRESENT - no delegatecall, randomness, signature, or proxy patterns"
   }},
   "vulnerabilities": [
     {{
