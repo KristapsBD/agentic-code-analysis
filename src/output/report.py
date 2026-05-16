@@ -91,22 +91,6 @@ class Report:
 
 
 class ReportGenerator:
-    SEVERITY_COLORS = {
-        "critical": "red bold",
-        "high": "red",
-        "medium": "yellow",
-        "low": "cyan",
-        "info": "blue",
-    }
-
-    SEVERITY_EMOJI = {
-        "critical": "🔴",
-        "high": "🟠",
-        "medium": "🟡",
-        "low": "🔵",
-        "info": "⚪",
-    }
-
     def generate(self, result: dict, contract_path: str) -> Report:
         findings = []
 
@@ -173,14 +157,12 @@ class ReportGenerator:
             console.print("\n[bold]Confirmed Vulnerabilities:[/bold]\n")
 
             for i, finding in enumerate(report.confirmed_findings, 1):
-                severity_style = self.SEVERITY_COLORS.get(finding.severity, "white")
-
                 table = Table(show_header=False, show_edge=False, padding=(0, 1))
                 table.add_column("Field", style="dim")
                 table.add_column("Value")
 
                 table.add_row("Type", finding.vulnerability_type)
-                table.add_row("Severity", f"[{severity_style}]{finding.severity.upper()}[/{severity_style}]")
+                table.add_row("Severity", f"{finding.severity.upper()}")
                 table.add_row("Location", finding.location)
                 table.add_row("Confidence", finding.confidence.value)
                 table.add_row("Description", finding.description[:200] + "..." if len(finding.description) > 200 else finding.description)
@@ -188,7 +170,6 @@ class ReportGenerator:
                 console.print(Panel(
                     table,
                     title=f"Finding #{i}",
-                    border_style=severity_style,
                 ))
 
                 if finding.recommendation:
@@ -233,9 +214,8 @@ class ReportGenerator:
 
         if report.confirmed_findings:
             for i, finding in enumerate(report.confirmed_findings, 1):
-                emoji = self.SEVERITY_EMOJI.get(finding.severity, "⚪")
                 md_lines.extend([
-                    f"### {i}. {finding.vulnerability_type} {emoji}",
+                    f"### {i}. {finding.vulnerability_type}",
                     f"",
                     f"- **Severity:** {finding.severity.upper()}",
                     f"- **Location:** `{finding.location}`",
