@@ -40,18 +40,20 @@ class TestAttackerAgent:
     @pytest.mark.asyncio
     async def test_analyze(self, attacker):
         mock_response = LLMResponse(
-            content='{"vulnerabilities": [{"type": "Reentrancy", "severity": "critical", "location": "withdraw()", "description": "External call before state update", "evidence": "call before balance update", "confidence": 0.9}]}',
+            content='{"vulnerabilities": [{"type": "Reentrancy", "severity": "critical", "location": "withdraw()", "description": "External call before state update", "evidence": "call before balance update", "confidence": "HIGH"}]}',
             model="test-model",
             tokens_used=100,
         )
         attacker.provider.complete = AsyncMock(return_value=mock_response)
         response = await attacker.analyze({
             "contract_code": "contract Test {}",
-            "contract_path": "test.sol",
-            "language": "solidity",
+            "static_analysis_context": "",
         })
         assert response.agent_role == AgentRole.ATTACKER
-        assert len(response.claims) >= 1
+        assert len(response.claims) == 1
+        assert response.claims[0].vulnerability_type == "Reentrancy"
+        assert response.claims[0].severity == "critical"
+        assert response.claims[0].confidence == ConfidenceLevel.HIGH
 
     def test_extract_claims_from_json(self, attacker):
         parsed = {"vulnerabilities": [{"type": "Reentrancy", "severity": "high", "location": "withdraw()", "description": "Vulnerable", "evidence": "call before state update", "confidence": "HIGH"}]}
@@ -84,7 +86,7 @@ class TestDefenderAgent:
     @pytest.mark.asyncio
     async def test_analyze(self, defender):
         mock_response = LLMResponse(
-            content='{"verdict": "INVALID_CLAIM", "defense": "The contract uses a ReentrancyGuard modifier.", "evidence": "nonReentrant modifier applied", "mitigations_found": ["ReentrancyGuard"], "recommended_severity": "none", "confidence": 0.9}',
+            content='{"verdict": "INVALID_CLAIM", "defense": "The contract uses a ReentrancyGuard modifier.", "evidence": "nonReentrant modifier applied", "mitigations_found": ["ReentrancyGuard"], "recommended_severity": "none", "confidence": "HIGH"}',
             model="test-model",
             tokens_used=100,
         )
@@ -93,6 +95,7 @@ class TestDefenderAgent:
         response = await defender.analyze({"contract_code": "contract Test {}", "claim": claim})
         assert response.agent_role == AgentRole.DEFENDER
         assert "INVALID_CLAIM" in response.reasoning
+        assert response.confidence == ConfidenceLevel.HIGH
 
 
 class TestJudgeAgent:
@@ -113,6 +116,11 @@ class TestJudgeAgent:
 
     def test_extract_verdict_not_vulnerable(self, judge):
         parsed = {"verdict": "NOT_VULNERABLE", "severity": "none", "confidence": "HIGH", "reasoning": "SafeMath used.", "recommendation": "None."}
+        verdict = judge._extract_verdict(parsed, "test-claim")
+        assert verdict.is_valid is False
+
+    def test_extract_verdict_invalid_not_matched_as_valid(self, judge):
+        parsed = {"verdict": "INVALID_CLAIM", "severity": "none", "confidence": "HIGH", "reasoning": "No exploit path.", "recommendation": ""}
         verdict = judge._extract_verdict(parsed, "test-claim")
         assert verdict.is_valid is False
 
@@ -179,62 +187,30 @@ class TestWebSearchPipeline:
         return provider
 
     @pytest.mark.asyncio
-    async def test_attacker_passes_web_search_to_provider(self):
-        provider = self._make_provider('{"vulnerabilities": []}')
-        attacker = AttackerAgent(provider, web_search=True)
-
-        await attacker.analyze({
-            "contract_code": "contract T {}",
-            "contract_path": "t.sol",
-            "language": "solidity",
-        })
-
-        _, call_kwargs = provider.complete.call_args
-        assert call_kwargs.get("web_search") is True, (
-            "web_search=True must reach provider.complete — "
-            "if it doesn't, the API never receives the search tool"
-        )
-
-    @pytest.mark.asyncio
-    async def test_defender_passes_web_search_to_provider(self):
-        provider = self._make_provider(
-            '{"verdict": "INVALID_CLAIM", "defense": "Safe", "evidence": "", '
-            '"mitigations_found": [], "recommended_severity": "none", "confidence": 0.9}'
-        )
+    async def test_all_agents_forward_web_search_flag(self):
         claim = VulnerabilityClaim(
             id="c1", vulnerability_type="Reentrancy", severity="high",
             location="withdraw()", description="Test", evidence="Test",
             confidence=ConfidenceLevel.HIGH,
         )
-        defender = DefenderAgent(provider, web_search=True)
 
+        attacker_provider = self._make_provider('{"vulnerabilities": []}')
+        attacker = AttackerAgent(attacker_provider, web_search=True)
+        await attacker.analyze({"contract_code": "contract T {}", "static_analysis_context": ""})
+        _, kwargs = attacker_provider.complete.call_args
+        assert kwargs.get("web_search") is True
+
+        defender_provider = self._make_provider('{"verdict": "INVALID_CLAIM", "defense": "", "evidence": "", "mitigations_found": [], "recommended_severity": "none", "confidence": "HIGH"}')
+        defender = DefenderAgent(defender_provider, web_search=True)
         await defender.analyze({"contract_code": "contract T {}", "claim": claim})
+        _, kwargs = defender_provider.complete.call_args
+        assert kwargs.get("web_search") is True
 
-        _, call_kwargs = provider.complete.call_args
-        assert call_kwargs.get("web_search") is True
-
-    @pytest.mark.asyncio
-    async def test_judge_passes_web_search_to_provider(self):
-        provider = self._make_provider(
-            '{"verdict": "VALID_VULNERABILITY", "severity": "high", "confidence": "HIGH", '
-            '"reasoning": "Confirmed.", "recommendation": "Fix it."}'
-        )
-        claim = VulnerabilityClaim(
-            id="c1", vulnerability_type="Reentrancy", severity="high",
-            location="withdraw()", description="Test", evidence="Test",
-            confidence=ConfidenceLevel.HIGH,
-        )
-        judge = JudgeAgent(provider, web_search=True)
-
-        await judge.analyze({
-            "contract_code": "contract T {}",
-            "claim": claim,
-            "attacker_argument": "Vulnerable",
-            "defender_argument": "Not vulnerable",
-        })
-
-        _, call_kwargs = provider.complete.call_args
-        assert call_kwargs.get("web_search") is True
+        judge_provider = self._make_provider('{"verdict": "NOT_VULNERABLE", "severity": "none", "confidence": "HIGH", "reasoning": "", "recommendation": ""}')
+        judge = JudgeAgent(judge_provider, web_search=True)
+        await judge.analyze({"contract_code": "contract T {}", "claim": claim, "attacker_argument": "", "defender_argument": ""})
+        _, kwargs = judge_provider.complete.call_args
+        assert kwargs.get("web_search") is True
 
     @pytest.mark.asyncio
     async def test_agents_always_pass_json_mode_true(self):
@@ -243,8 +219,7 @@ class TestWebSearchPipeline:
 
         await attacker.analyze({
             "contract_code": "contract T {}",
-            "contract_path": "t.sol",
-            "language": "solidity",
+            "static_analysis_context": "",
         })
 
         _, call_kwargs = provider.complete.call_args

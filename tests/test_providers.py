@@ -293,6 +293,19 @@ class TestGeminiWebSearch:
         with patch("src.providers.gemini_provider.genai.Client"):
             return GeminiProvider(api_key="test-key", model="gemini-2.5-flash")
 
+    def _capture_gemini_call(self, provider, text="Answer"):
+        mock_response = MagicMock()
+        mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text=text, spec=["text"])]))]
+        mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
+        captured = {}
+
+        async def fake_generate(model, contents, config):
+            captured["config"] = config
+            return mock_response
+
+        provider.client.aio.models.generate_content = fake_generate
+        return captured
+
     def test_build_contents_system_extracted(self, provider):
         system_instr, contents = provider._build_contents([
             Message(role="system", content="You are a security auditor."),
@@ -314,56 +327,25 @@ class TestGeminiWebSearch:
     @pytest.mark.asyncio
     async def test_web_search_adds_google_search_tool(self, provider):
         from google.genai import types
-
-        mock_response = MagicMock()
-        mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="Answer", spec=["text"])]))]
-        mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
-
-        captured_config = {}
-
-        async def fake_generate(model, contents, config):
-            captured_config["config"] = config
-            return mock_response
-
-        provider.client.aio.models.generate_content = fake_generate
+        captured = self._capture_gemini_call(provider)
 
         await provider.complete([Message(role="user", content="Latest Solidity version?")], web_search=True)
 
-        config = captured_config["config"]
-        assert config.tools is not None
-        assert any(isinstance(t, types.Tool) and t.google_search is not None for t in config.tools)
+        assert captured["config"].tools is not None
+        assert any(isinstance(t, types.Tool) and t.google_search is not None for t in captured["config"].tools)
 
     @pytest.mark.asyncio
     async def test_no_web_search_by_default(self, provider):
-        mock_response = MagicMock()
-        mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="Answer", spec=["text"])]))]
-        mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
-
-        captured_config = {}
-
-        async def fake_generate(model, contents, config):
-            captured_config["config"] = config
-            return mock_response
-
-        provider.client.aio.models.generate_content = fake_generate
+        captured = self._capture_gemini_call(provider)
 
         await provider.complete([Message(role="user", content="Hello")])
 
-        assert not captured_config["config"].tools
+        assert not captured["config"].tools
 
     @pytest.mark.asyncio
     async def test_web_search_suppressed_by_json_mode(self, provider):
-        mock_response = MagicMock()
-        mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="{}", spec=["text"])]))]
-        mock_response.usage_metadata = MagicMock(prompt_token_count=10, candidates_token_count=5, total_token_count=15)
-
-        captured_config = {}
-
-        async def fake_generate(model, contents, config):
-            captured_config["config"] = config
-            return mock_response
-
-        provider.client.aio.models.generate_content = fake_generate
+        from google.genai import types
+        captured = self._capture_gemini_call(provider, text="{}")
 
         await provider.complete(
             [Message(role="user", content="Analyse this contract.")],
@@ -371,10 +353,8 @@ class TestGeminiWebSearch:
             json_mode=True,
         )
 
-        config = captured_config["config"]
-        from google.genai import types
-        has_search_tool = config.tools and any(
-            isinstance(t, types.Tool) and t.google_search is not None for t in config.tools
+        has_search_tool = captured["config"].tools and any(
+            isinstance(t, types.Tool) and t.google_search is not None for t in captured["config"].tools
         )
         assert not has_search_tool, (
             "Gemini disables web search when json_mode=True; "
