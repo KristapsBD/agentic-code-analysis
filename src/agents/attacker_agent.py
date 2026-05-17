@@ -52,7 +52,7 @@ class AttackerAgent(BaseAgent):
 
         return AgentResponse(
             agent_role=self.role,
-            content=parsed.get("raw_content", str(parsed)),
+            content=parsed.get("raw_content") or json.dumps(parsed),
             claims=claims,
             reasoning="Initial vulnerability scan completed",
             confidence=ConfidenceLevel.HIGH,

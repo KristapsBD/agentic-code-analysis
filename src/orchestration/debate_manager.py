@@ -200,7 +200,6 @@ class DebateManager:
             "contract_code": contract_code,
             "static_analysis_context": static_analysis_context,
         })
-        logger.debug(f"Attacker response received: {attacker_response.tokens_used} tokens")
 
         conversation.add_turn(
             TurnType.ATTACK,
@@ -242,7 +241,7 @@ class DebateManager:
                     f"{claim.vulnerability_type}"
                 )
 
-            self._reset_claim_context()
+            self.reset_agents()
 
             claim_result = await self._debate_claim(
                 claim=claim,
@@ -514,11 +513,8 @@ class DebateManager:
             return True
         return False
 
-    def _reset_claim_context(self) -> None:
+    def reset_agents(self) -> None:
         logger.debug("Resetting agent histories for new claim")
         self.attacker.clear_history()
         self.defender.clear_history()
         self.judge.clear_history()
-
-    def reset_agents(self) -> None:
-        self._reset_claim_context()

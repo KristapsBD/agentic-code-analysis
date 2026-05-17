@@ -1,3 +1,4 @@
+import functools
 import logging
 from datetime import datetime
 from enum import Enum
@@ -52,6 +53,7 @@ class LLMProvider(str, Enum):
 _CONFIDENCE_ORDER = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
 
 
+@functools.total_ordering
 class ConfidenceLevel(str, Enum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"
@@ -59,15 +61,6 @@ class ConfidenceLevel(str, Enum):
 
     def __lt__(self, other: "ConfidenceLevel") -> bool:
         return _CONFIDENCE_ORDER[self.value] < _CONFIDENCE_ORDER[other.value]
-
-    def __le__(self, other: "ConfidenceLevel") -> bool:
-        return _CONFIDENCE_ORDER[self.value] <= _CONFIDENCE_ORDER[other.value]
-
-    def __gt__(self, other: "ConfidenceLevel") -> bool:
-        return _CONFIDENCE_ORDER[self.value] > _CONFIDENCE_ORDER[other.value]
-
-    def __ge__(self, other: "ConfidenceLevel") -> bool:
-        return _CONFIDENCE_ORDER[self.value] >= _CONFIDENCE_ORDER[other.value]
 
 
 class Settings(BaseSettings):
@@ -82,10 +75,10 @@ class Settings(BaseSettings):
         default="gpt-4o", alias="DEFAULT_MODEL_OPENAI"
     )
     default_model_anthropic: str = Field(
-        default="claude-3-5-sonnet-20241022", alias="DEFAULT_MODEL_ANTHROPIC"
+        default="claude-sonnet-4-6", alias="DEFAULT_MODEL_ANTHROPIC"
     )
     default_model_gemini: str = Field(
-        default="gemini-2.0-flash-exp", alias="DEFAULT_MODEL_GEMINI"
+        default="gemini-2.5-flash", alias="DEFAULT_MODEL_GEMINI"
     )
 
     default_debate_rounds: int = Field(default=2, alias="DEFAULT_DEBATE_ROUNDS", ge=1, le=5)

@@ -128,5 +128,5 @@ Respond with ONLY this JSON structure:
   "severity": "critical|high|medium|low|none",
   "confidence": "HIGH",
   "reasoning": "Your final determination incorporating the clarification responses and all prior arguments",
-  "recommendation": "Specific fix if valid; explanation of why the code is safe if not vulnerable",
+  "recommendation": "Specific fix if valid; explanation of why the code is safe if not vulnerable"
 }}"""

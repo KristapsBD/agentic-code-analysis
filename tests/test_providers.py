@@ -16,13 +16,6 @@ class TestMessage:
         assert msg.to_dict() == {"role": "assistant", "content": "Hi there"}
 
 
-class TestLLMResponse:
-
-    def test_total_tokens_calculation(self):
-        response = LLMResponse(content="Test", model="test-model", prompt_tokens=30, completion_tokens=20)
-        assert response.total_tokens == 50
-
-
 class TestOpenAIProvider:
 
     @pytest.fixture

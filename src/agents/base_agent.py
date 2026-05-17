@@ -47,7 +47,6 @@ class AgentResponse:
     claims: list[VulnerabilityClaim] = field(default_factory=list)
     reasoning: str = ""
     confidence: ConfidenceLevel = ConfidenceLevel.MEDIUM
-    tokens_used: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -57,7 +56,6 @@ class AgentResponse:
             "claims": [claim.to_dict() for claim in self.claims],
             "reasoning": self.reasoning,
             "confidence": self.confidence.value,
-            "tokens_used": self.tokens_used,
             "metadata": self.metadata,
         }
 

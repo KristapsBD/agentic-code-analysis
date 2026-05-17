@@ -18,9 +18,6 @@ class LLMResponse:
     finish_reason: str = "stop"
     raw_response: Optional[dict] = field(default=None, repr=False)
 
-    @property
-    def total_tokens(self) -> int:
-        return self.prompt_tokens + self.completion_tokens
 
 
 @dataclass
@@ -57,23 +54,6 @@ class BaseLLMProvider(ABC):
         json_mode: bool = False,
     ) -> LLMResponse:
         pass
-
-    async def complete_simple(
-        self,
-        prompt: str,
-        system_prompt: Optional[str] = None,
-        temperature: Optional[float] = None,
-        web_search: bool = False,
-        json_mode: bool = False,
-    ) -> str:
-        messages = []
-        if system_prompt:
-            messages.append(Message(role="system", content=system_prompt))
-        messages.append(Message(role="user", content=prompt))
-        response = await self.complete(
-            messages, temperature=temperature, web_search=web_search, json_mode=json_mode
-        )
-        return response.content
 
     @staticmethod
     def _is_rate_limit_error(exc: Exception) -> bool:
